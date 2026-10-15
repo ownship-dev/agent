@@ -18,6 +18,10 @@ import (
 
 const seenCap = 2048
 
+// Capabilities names the commands added after the original set, announced in Hello.
+// A new live-channel command joins here, or the control plane refuses it.
+var Capabilities = []string{"db_query"}
+
 type Router struct {
 	exec executors.Executor
 	log  *slog.Logger

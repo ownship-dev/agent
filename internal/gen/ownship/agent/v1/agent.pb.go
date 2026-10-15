@@ -5766,8 +5766,11 @@ type Hello struct {
 	// minimum version (GPU passthrough via devN: 8.1+) are gated on it.
 	ProxmoxVersion string        `protobuf:"bytes,9,opt,name=proxmox_version,json=proxmoxVersion,proto3" json:"proxmox_version,omitempty"`
 	Engines        []*EngineInfo `protobuf:"bytes,10,rep,name=engines,proto3" json:"engines,omitempty"`
-	unknownFields  protoimpl.UnknownFields
-	sizeCache      protoimpl.SizeCache
+	// Commands this agent handles beyond the original set (e.g. "db_query"), so the control
+	// plane can refuse at once instead of waiting on an agent that ignores the command.
+	Capabilities  []string `protobuf:"bytes,11,rep,name=capabilities,proto3" json:"capabilities,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *Hello) Reset() {
@@ -5867,6 +5870,13 @@ func (x *Hello) GetProxmoxVersion() string {
 func (x *Hello) GetEngines() []*EngineInfo {
 	if x != nil {
 		return x.Engines
+	}
+	return nil
+}
+
+func (x *Hello) GetCapabilities() []string {
+	if x != nil {
+		return x.Capabilities
 	}
 	return nil
 }
@@ -7602,7 +7612,7 @@ const file_ownship_agent_v1_agent_proto_rawDesc = "" +
 	"\n" +
 	"session_id\x18\x01 \x01(\tR\tsessionId\x12\x12\n" +
 	"\x04data\x18\x02 \x01(\fR\x04data\x12\x16\n" +
-	"\x06closed\x18\x03 \x01(\bR\x06closed\"\xa6\x03\n" +
+	"\x06closed\x18\x03 \x01(\bR\x06closed\"\xca\x03\n" +
 	"\x05Hello\x121\n" +
 	"\x05agent\x18\x01 \x01(\v2\x1b.ownship.agent.v1.AgentInfoR\x05agent\x12+\n" +
 	"\x11proxmox_reachable\x18\x02 \x01(\bR\x10proxmoxReachable\x12)\n" +
@@ -7615,7 +7625,8 @@ const file_ownship_agent_v1_agent_proto_rawDesc = "" +
 	"\x04gpus\x18\b \x03(\v2\x15.ownship.agent.v1.GpuR\x04gpus\x12'\n" +
 	"\x0fproxmox_version\x18\t \x01(\tR\x0eproxmoxVersion\x126\n" +
 	"\aengines\x18\n" +
-	" \x03(\v2\x1c.ownship.agent.v1.EngineInfoR\aengines\"\x90\x01\n" +
+	" \x03(\v2\x1c.ownship.agent.v1.EngineInfoR\aengines\x12\"\n" +
+	"\fcapabilities\x18\v \x03(\tR\fcapabilities\"\x90\x01\n" +
 	"\n" +
 	"EngineInfo\x125\n" +
 	"\x04kind\x18\x01 \x01(\x0e2!.ownship.agent.v1.ContainerEngineR\x04kind\x12\x18\n" +

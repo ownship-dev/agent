@@ -291,6 +291,7 @@ func hello(cfg config.Config, nodes []*agentv1.NodeInfo, templates []string, bri
 				Gpus:           gpus,
 				ProxmoxVersion: pveVersion,
 				Engines:        engines,
+				Capabilities:   router.Capabilities,
 				// Older control planes still read it.
 				DockerVersion: dockerVersion,
 			},
