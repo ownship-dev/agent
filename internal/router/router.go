@@ -23,7 +23,7 @@ const seenCap = 2048
 
 // Capabilities names the commands added after the original set, announced in Hello.
 // A new live-channel command joins here, or the control plane refuses it.
-var Capabilities = []string{"db_query", "self_update"}
+var Capabilities = []string{"db_query", "self_update", "adopt"}
 
 type Router struct {
 	exec executors.Executor
@@ -147,6 +147,10 @@ func (r *Router) Handle(ctx context.Context, cmd *agentv1.Command, emit executor
 	case *agentv1.Command_DbQuery:
 		r.run(ctx, "", emit, func(c context.Context) error {
 			return r.exec.DbQuery(c, cmd.GetDbQuery(), emit)
+		})
+	case *agentv1.Command_Adopt:
+		r.run(ctx, "", emit, func(c context.Context) error {
+			return r.exec.Adopt(c, cmd.GetAdopt(), emit)
 		})
 	case *agentv1.Command_AgentUpdate:
 		u := cmd.GetAgentUpdate()

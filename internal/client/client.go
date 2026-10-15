@@ -299,20 +299,12 @@ func hello(cfg config.Config, nodes []*agentv1.NodeInfo, templates []string, bri
 	}
 }
 
-// stateEvent reports existing workloads; a failed listing is never marked complete.
 func (c *Client) stateEvent(ctx context.Context) *agentv1.Event {
 	inv, err := c.exec.List(ctx)
 	if err != nil {
 		c.log.Warn("failed to list state", "err", err)
-		inv.Complete = false
 	}
-	projects := make([]*agentv1.ProjectState, 0, len(inv.IDs))
-	for _, id := range inv.IDs {
-		projects = append(projects, &agentv1.ProjectState{ProjectId: id})
-	}
-	return &agentv1.Event{Payload: &agentv1.Event_State{
-		State: &agentv1.State{Projects: projects, Complete: inv.Complete},
-	}}
+	return executors.StateEvent(inv, err)
 }
 
 // reportState re-sends the inventory so outside deletions are noticed without a reconnect.

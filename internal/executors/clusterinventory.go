@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os/exec"
 	"strconv"
+	"strings"
 )
 
 // ownshipTag marks this agent's LXCs in the Proxmox UI.
@@ -20,10 +21,12 @@ var clusterGuestsJSON = func(ctx context.Context) ([]byte, error) {
 type clusterGuest struct {
 	VMID int    `json:"vmid"`
 	Type string `json:"type"`
+	Tags string `json:"tags"`
 }
 
-// existingLXCs excludes vmids reused by a VM: that isn't the container this agent created.
-func existingLXCs(ctx context.Context) (map[string]bool, error) {
+// clusterLXCs maps each LXC vmid to whether it carries the ownship tag. VMs are excluded:
+// a vmid reused by one isn't the container this agent created.
+func clusterLXCs(ctx context.Context) (map[string]bool, error) {
 	out, err := clusterGuestsJSON(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("list cluster guests: %w", err)
@@ -35,10 +38,31 @@ func existingLXCs(ctx context.Context) (map[string]bool, error) {
 	lxcs := make(map[string]bool, len(guests))
 	for _, g := range guests {
 		if g.Type == "lxc" {
-			lxcs[strconv.Itoa(g.VMID)] = true
+			lxcs[strconv.Itoa(g.VMID)] = hasOwnshipTag(g.Tags)
 		}
 	}
 	return lxcs, nil
+}
+
+func existingLXCs(ctx context.Context) (map[string]bool, error) {
+	lxcs, err := clusterLXCs(ctx)
+	if err != nil {
+		return nil, err
+	}
+	for vmid := range lxcs {
+		lxcs[vmid] = true
+	}
+	return lxcs, nil
+}
+
+// Proxmox joins tags with ';' (',' and spaces are accepted on input).
+func hasOwnshipTag(tags string) bool {
+	for _, t := range strings.FieldsFunc(tags, func(r rune) bool { return r == ';' || r == ',' || r == ' ' }) {
+		if t == ownshipTag {
+			return true
+		}
+	}
+	return false
 }
 
 // lxcGone is true only when vmid provably no longer exists; any doubt is "not gone".

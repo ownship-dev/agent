@@ -8,8 +8,8 @@
 # Re-running the installer is a clean reinstall: if an agent is already present it
 # is fully overridden — the old binary, service and ALL credentials (token) are
 # wiped before the new agent is laid down, so pass `pair <CODE>` again to re-pair.
-# (Only the workloads it deployed are preserved.) For an in-place binary upgrade
-# that keeps pairing, use `ownship-agent update` or the hourly auto-update instead.
+# The workloads it deployed and its map of them are preserved. For an in-place binary
+# upgrade that keeps pairing, use `ownship-agent update` or the hourly auto-update instead.
 #
 # Proxmox is detected automatically (LXC per project, no Docker on the host).
 # Force a mode with ORCHESTRATOR=local or ORCHESTRATOR=proxmox.
@@ -39,9 +39,8 @@ if [ "$(id -u)" -ne 0 ]; then
   fi
 fi
 
-# Remove the agent binary, its service and ALL local state (token/credentials) —
-# but NEVER the workloads (containers/LXCs) it deployed; those are the user's data.
-# Shared by --uninstall and the re-install override path.
+# Remove the binary, service and token, never the workloads (user data). Only "all" (--uninstall)
+# drops the state dir: a reinstall needs its map of which LXC holds which workload.
 purge_agent() {
   $SUDO systemctl stop ownship-agent 2>/dev/null || true
   $SUDO systemctl disable ownship-agent 2>/dev/null || true
@@ -50,7 +49,12 @@ purge_agent() {
   $SUDO systemctl daemon-reload 2>/dev/null || true
   $SUDO systemctl reset-failed ownship-agent 2>/dev/null || true
   $SUDO rm -f "$DEST" "${DEST}.bak" "${DEST}.new"
-  $SUDO rm -rf /etc/ownship /root/.ownship /var/lib/ownship
+  $SUDO rm -rf /etc/ownship
+  if [ "${1:-}" = "all" ]; then
+    $SUDO rm -rf /root/.ownship /var/lib/ownship
+  else
+    $SUDO rm -f /root/.ownship/token /var/lib/ownship/.ownship/token
+  fi
 }
 
 # Whether any trace of a prior install is present (binary, service, or token).
@@ -61,8 +65,8 @@ agent_present() {
 # Uninstall: purge everything and stop.
 if [ "${1:-}" = "--uninstall" ]; then
   echo "Uninstalling ownship-agent..."
-  purge_agent
-  echo "Done — agent, service and token removed."
+  purge_agent all
+  echo "Done — agent, service, token and local state removed."
   echo "Containers/LXCs the agent deployed were left running (they're your data)."
   exit 0
 fi
@@ -91,7 +95,7 @@ if curl -fsSL "$RELEASE_BASE/checksums.txt" -o "${tmp}.sums" 2>/dev/null; then
 fi
 
 # Override an existing install: a re-run is a clean reinstall — wipe the old
-# binary, service and ALL credentials, then lay everything down fresh. Done only
+# binary, service and credentials, then lay everything down fresh. Done only
 # now (after the new binary is downloaded + verified) so a failed download never
 # leaves the host with nothing.
 if agent_present; then

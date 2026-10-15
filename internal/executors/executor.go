@@ -33,6 +33,8 @@ type Executor interface {
 	// CheckImageUpdate compares the running image's digest with the registry's for the same tag.
 	CheckImageUpdate(ctx context.Context, cmd *agentv1.CheckImageUpdate, emit Emit) error
 	List(ctx context.Context) (Inventory, error)
+	// Adopt re-tracks workloads the control plane recorded but the agent's state lost.
+	Adopt(ctx context.Context, cmd *agentv1.Adopt, emit Emit) error
 	LanCAPEM() string
 	GPUs(ctx context.Context) []*agentv1.Gpu
 	PveVersion(ctx context.Context) string

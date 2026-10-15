@@ -118,4 +118,9 @@ type ClusterDiscovery interface {
 	PveVersion(ctx context.Context) string
 }
 
+// Adopter re-tracks workloads whose local mapping was lost; ProxmoxLXC only.
+type Adopter interface {
+	Adopt(ctx context.Context, pairs map[string]string) ([]string, error)
+}
+
 type LogFunc func(agentv1.LogStream, string)

@@ -97,3 +97,92 @@ func TestLxcGoneOnlyWhenProven(t *testing.T) {
 		t.Fatal("unknown state must not read as gone")
 	}
 }
+
+// A lost state file (reinstall) must not read as "every workload was deleted".
+func TestProxmoxListIsIncompleteWithAnUntrackedOwnshipLXC(t *testing.T) {
+	o := proxmoxWithLXC(t, "kept", "101")
+	fakeClusterGuests(t, `[{"vmid":101,"type":"lxc","tags":"ownship"},{"vmid":102,"type":"lxc","tags":"db;ownship"},{"vmid":300,"type":"lxc","tags":"mine"}]`, nil)
+
+	inv, err := o.List(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if inv.Complete || !reflect.DeepEqual(inv.IDs, []string{"kept"}) {
+		t.Fatalf("got %+v, want incomplete [kept]", inv)
+	}
+}
+
+func TestProxmoxListIgnoresUntaggedForeignLXCs(t *testing.T) {
+	o := proxmoxWithLXC(t, "kept", "101")
+	fakeClusterGuests(t, `[{"vmid":101,"type":"lxc","tags":"ownship"},{"vmid":300,"type":"lxc"},{"vmid":301,"type":"qemu","tags":"ownship"}]`, nil)
+
+	inv, err := o.List(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !inv.Complete {
+		t.Fatalf("got %+v, want complete", inv)
+	}
+}
+
+func TestProxmoxAdoptTakesOnlyFreeOwnshipLXCs(t *testing.T) {
+	o := proxmoxWithLXC(t, "tracked", "101")
+	fakeClusterGuests(t, `[
+		{"vmid":101,"type":"lxc","tags":"ownship"},
+		{"vmid":102,"type":"lxc","tags":"ownship"},
+		{"vmid":103,"type":"lxc","tags":"other"},
+		{"vmid":105,"type":"qemu","tags":"ownship"},
+		{"vmid":106,"type":"lxc","tags":"ownship"},
+		{"vmid":107,"type":"lxc","tags":"ownship"}]`, nil)
+
+	adopted, err := o.Adopt(context.Background(), map[string]string{
+		"tracked":  "107", // already mapped: never remapped
+		"db":       "102",
+		"untagged": "103", // not an Ownship container
+		"gone":     "104",
+		"vm":       "105",
+		"held":     "101", // another workload's LXC
+		"stale":    "106", // two rows naming one vmid: neither wins
+		"live":     "106",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(adopted, []string{"db"}) {
+		t.Fatalf("adopted %v, want [db]", adopted)
+	}
+	if v, _ := o.state.get("tracked"); v != "101" {
+		t.Fatalf("tracked remapped to %s", v)
+	}
+	if v, _ := o.state.get("db"); v != "102" {
+		t.Fatalf("db mapped to %q", v)
+	}
+	// 106 and 107 stay untracked, yet once adopted the listing is trusted again.
+	inv, _ := o.List(context.Background())
+	if !inv.Complete || !reflect.DeepEqual(inv.IDs, []string{"db", "tracked"}) {
+		t.Fatalf("after adopt got %+v, want complete [db tracked]", inv)
+	}
+}
+
+func TestProxmoxListTrustsAStrayOwnshipLXCAfterAdopt(t *testing.T) {
+	o := proxmoxWithLXC(t, "kept", "101")
+	fakeClusterGuests(t, `[{"vmid":101,"type":"lxc","tags":"ownship"},{"vmid":102,"type":"lxc","tags":"ownship"}]`, nil)
+	if _, err := o.Adopt(context.Background(), nil); err != nil {
+		t.Fatal(err)
+	}
+	inv, err := o.List(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !inv.Complete || !reflect.DeepEqual(inv.IDs, []string{"kept"}) {
+		t.Fatalf("got %+v, want complete [kept]", inv)
+	}
+}
+
+func TestProxmoxAdoptFailsClosedWhenPveshFails(t *testing.T) {
+	o := proxmoxWithLXC(t, "tracked", "101")
+	fakeClusterGuests(t, "", errors.New("boom"))
+	if adopted, err := o.Adopt(context.Background(), map[string]string{"db": "102"}); err == nil || len(adopted) > 0 {
+		t.Fatalf("got %v / %v, want an error and nothing adopted", adopted, err)
+	}
+}

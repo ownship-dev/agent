@@ -14,6 +14,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/ownship/agent/internal/compose"
@@ -59,6 +60,9 @@ type ProxmoxLXC struct {
 	// Serializes nextVmid() through pct create/clone across all workloads, so two projects
 	// deploying at once can't claim the same vmid.
 	vmidMu sync.Mutex
+
+	// Until the control plane's Adopt lands, an untracked ownship LXC may be a lost mapping.
+	adopted atomic.Bool
 }
 
 const (
@@ -568,18 +572,63 @@ func (o *ProxmoxLXC) pruneImages(ctx context.Context, eng *Engine, projectID str
 // a vmid, once they've seen it gone.
 func (o *ProxmoxLXC) List(ctx context.Context) (Inventory, error) {
 	tracked := o.state.snapshot()
-	lxcs, err := existingLXCs(ctx)
+	lxcs, err := clusterLXCs(ctx)
 	if err != nil {
 		return Inventory{IDs: o.state.projectIDs()}, err
 	}
 	inv := Inventory{Complete: true}
+	trackedVmids := make(map[string]bool, len(tracked))
 	for id, vmid := range tracked {
-		if lxcs[vmid] {
+		trackedVmids[vmid] = true
+		if _, ok := lxcs[vmid]; ok {
 			inv.IDs = append(inv.IDs, id)
+		}
+	}
+	// Before Adopt, an untracked ownship LXC may be a mapping a reinstall lost. After it, a
+	// stray one (a failed create, another homelab on the cluster) must not mute detection.
+	if !o.adopted.Load() {
+		for vmid, tagged := range lxcs {
+			if tagged && !trackedVmids[vmid] {
+				inv.Complete = false
+				break
+			}
 		}
 	}
 	sort.Strings(inv.IDs)
 	return inv, nil
+}
+
+// Adopt tracks workload->vmid pairs the control plane recorded, for a state file that was
+// lost. Only an existing ownship-tagged LXC no other workload holds is taken.
+func (o *ProxmoxLXC) Adopt(ctx context.Context, pairs map[string]string) ([]string, error) {
+	lxcs, err := clusterLXCs(ctx)
+	if err != nil {
+		return nil, err
+	}
+	held := map[string]bool{}
+	for _, vmid := range o.state.snapshot() {
+		held[vmid] = true
+	}
+	// Two rows naming one vmid can't both be right; picking one would hand it the other's LXC.
+	claims := map[string]int{}
+	for _, vmid := range pairs {
+		claims[vmid]++
+	}
+	var adopted []string
+	for id, vmid := range pairs {
+		if _, ok := o.state.get(id); ok || held[vmid] || claims[vmid] > 1 || !lxcs[vmid] {
+			continue
+		}
+		if err := o.state.set(id, vmid); err != nil {
+			sort.Strings(adopted)
+			return adopted, err
+		}
+		held[vmid] = true
+		adopted = append(adopted, id)
+	}
+	o.adopted.Store(true)
+	sort.Strings(adopted)
+	return adopted, nil
 }
 
 // FollowLogs tails the app container; compose projects tail every service, prefixed by name.

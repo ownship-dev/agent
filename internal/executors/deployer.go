@@ -668,6 +668,40 @@ func (d *Deployer) List(ctx context.Context) (Inventory, error) {
 	return d.orch.List(ctx)
 }
 
+// Adopt is a no-op on Docker, whose inventory is the container names themselves. Anything
+// adopted is reported at once, so a workload marked missing comes back without a minute's wait.
+func (d *Deployer) Adopt(ctx context.Context, cmd *agentv1.Adopt, emit Emit) error {
+	a, ok := d.orch.(Adopter)
+	if !ok {
+		return nil
+	}
+	pairs := make(map[string]string, len(cmd.GetWorkloads()))
+	for _, w := range cmd.GetWorkloads() {
+		if w.GetWorkloadId() != "" && w.GetLxcId() != "" {
+			pairs[w.GetWorkloadId()] = w.GetLxcId()
+		}
+	}
+	adopted, err := a.Adopt(ctx, pairs)
+	if len(adopted) > 0 {
+		_ = emit(StateEvent(d.List(ctx)))
+	}
+	return err
+}
+
+// StateEvent reports existing workloads; a failed listing is never marked complete.
+func StateEvent(inv Inventory, err error) *agentv1.Event {
+	if err != nil {
+		inv.Complete = false
+	}
+	projects := make([]*agentv1.ProjectState, 0, len(inv.IDs))
+	for _, id := range inv.IDs {
+		projects = append(projects, &agentv1.ProjectState{ProjectId: id})
+	}
+	return &agentv1.Event{Payload: &agentv1.Event_State{
+		State: &agentv1.State{Projects: projects, Complete: inv.Complete},
+	}}
+}
+
 // Cluster discovery is Proxmox-only; on Docker these return empty inventory.
 func (d *Deployer) Nodes(ctx context.Context) []*agentv1.NodeInfo {
 	if cd, ok := d.orch.(ClusterDiscovery); ok {
