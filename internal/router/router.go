@@ -21,9 +21,9 @@ import (
 
 const seenCap = 2048
 
-// Capabilities names the commands added after the original set, announced in Hello.
+// Capabilities names commands and behaviours added after the original set, announced in Hello.
 // A new live-channel command joins here, or the control plane refuses it.
-var Capabilities = []string{"db_query", "self_update", "adopt"}
+var Capabilities = []string{"db_query", "self_update", "adopt", "mongo_typed_json"}
 
 type Router struct {
 	exec executors.Executor

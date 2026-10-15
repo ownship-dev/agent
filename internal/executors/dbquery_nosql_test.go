@@ -2,6 +2,7 @@ package executors
 
 import (
 	"bufio"
+	"bytes"
 	"encoding/json"
 	"strings"
 	"testing"
@@ -55,5 +56,41 @@ func TestMongoReadOnly(t *testing.T) {
 		if got := mongoReadOnly(d); got != want {
 			t.Errorf("%s: got %v", src, got)
 		}
+	}
+}
+
+func TestTypedExtJSONKeepsNumericTypes(t *testing.T) {
+	raw, err := bson.Marshal(bson.D{
+		{Key: "_id", Value: bson.ObjectID{1}},
+		{Key: "i32", Value: int32(7)},
+		{Key: "i64", Value: int64(7)},
+		{Key: "big", Value: int64(1 << 60)},
+		{Key: "whole", Value: 2.0},
+		{Key: "frac", Value: 2.5},
+		{Key: "s", Value: "a\"b<"},
+		{Key: "when", Value: bson.DateTime(0)},
+		{Key: "nested", Value: bson.D{{Key: "arr", Value: bson.A{int64(1), int32(2), 3.0}}}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := typedExtJSON(nil, raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := `{"_id":{"$oid":"010000000000000000000000"},"i32":7,"i64":{"$numberLong":"7"},` +
+		`"big":{"$numberLong":"1152921504606846976"},"whole":{"$numberDouble":"2.0"},"frac":2.5,"s":"a\"b<",` +
+		`"when":{"$date":"1970-01-01T00:00:00Z"},"nested":{"arr":[{"$numberLong":"1"},2,{"$numberDouble":"3.0"}]}}`
+	if string(got) != want {
+		t.Fatalf("got  %s\nwant %s", got, want)
+	}
+	// Relaxed parsing must give the same types back.
+	var back bson.D
+	if err := bson.UnmarshalExtJSON(got, false, &back); err != nil {
+		t.Fatal(err)
+	}
+	again, _ := bson.Marshal(back)
+	if !bytes.Equal(again, raw) {
+		t.Fatal("round trip changed the document")
 	}
 }

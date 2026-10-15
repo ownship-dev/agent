@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"net"
 	"net/url"
 	"strconv"
@@ -199,7 +200,7 @@ func runRedis(ctx context.Context, t dbTarget, cmd *agentv1.DbQuery, res *agentv
 	conn, err := dialer.DialContext(dialCtx, "tcp", t.addr)
 	cancel()
 	if err != nil {
-		return err
+		return connectFailed(err)
 	}
 	defer conn.Close()
 	c := &respConn{conn: conn, r: bufio.NewReader(conn)}
@@ -217,7 +218,7 @@ func runRedis(ctx context.Context, t dbTarget, cmd *agentv1.DbQuery, res *agentv
 	}
 	if t.password != "" {
 		if err := setup("AUTH", t.password); err != nil {
-			return err
+			return connectFailed(err)
 		}
 	}
 	if db := cmd.GetDatabase(); db != "" && db != "0" {
@@ -312,11 +313,11 @@ func runMongo(ctx context.Context, t dbTarget, cmd *agentv1.DbQuery, res *agentv
 		SetConnectTimeout(10 * time.Second).
 		SetServerSelectionTimeout(10 * time.Second))
 	if err != nil {
-		return err
+		return connectFailed(err)
 	}
 	defer func() { _ = client.Disconnect(context.Background()) }()
 	if err := client.Ping(ctx, nil); err != nil {
-		return err
+		return connectFailed(err)
 	}
 
 	database := cmd.GetDatabase()
@@ -346,7 +347,12 @@ func runMongo(ctx context.Context, t dbTarget, cmd *agentv1.DbQuery, res *agentv
 		if err != nil {
 			return fail(err.Error())
 		}
-		reply, err := bson.MarshalExtJSON(raw, false, false)
+		var reply []byte
+		if cmd.GetTypedJson() {
+			reply, err = typedExtJSON(nil, raw)
+		} else {
+			reply, err = bson.MarshalExtJSON(raw, false, false)
+		}
 		if err != nil {
 			return fail(err.Error())
 		}
@@ -357,4 +363,61 @@ func runMongo(ctx context.Context, t dbTarget, cmd *agentv1.DbQuery, res *agentv
 		res.Results = append(res.Results, jsonReplySet(doc[0].Key, reply, start))
 	}
 	return nil
+}
+
+// typedExtJSON is relaxed Extended JSON, except Int64 and whole or non-finite doubles keep
+// their wrapper: relaxed parsing would read them back as Int32.
+func typedExtJSON(dst []byte, doc bson.Raw) ([]byte, error) {
+	elems, err := doc.Elements()
+	if err != nil {
+		return nil, err
+	}
+	dst = append(dst, '{')
+	for i, e := range elems {
+		if i > 0 {
+			dst = append(dst, ',')
+		}
+		key, _ := json.Marshal(e.Key())
+		dst = append(append(dst, key...), ':')
+		if dst, err = typedExtJSONValue(dst, e.Value()); err != nil {
+			return nil, err
+		}
+	}
+	return append(dst, '}'), nil
+}
+
+func typedExtJSONValue(dst []byte, v bson.RawValue) ([]byte, error) {
+	switch v.Type {
+	case bson.TypeEmbeddedDocument:
+		return typedExtJSON(dst, v.Document())
+	case bson.TypeArray:
+		vals, err := v.Array().Values()
+		if err != nil {
+			return nil, err
+		}
+		dst = append(dst, '[')
+		for i, e := range vals {
+			if i > 0 {
+				dst = append(dst, ',')
+			}
+			if dst, err = typedExtJSONValue(dst, e); err != nil {
+				return nil, err
+			}
+		}
+		return append(dst, ']'), nil
+	case bson.TypeInt64:
+		return fmt.Appendf(dst, `{"$numberLong":"%d"}`, v.Int64()), nil
+	case bson.TypeDouble:
+		f := v.Double()
+		if math.IsInf(f, 0) || math.IsNaN(f) || f == math.Trunc(f) {
+			break
+		}
+		return strconv.AppendFloat(dst, f, 'g', -1, 64), nil
+	}
+	// Everything else, and whole doubles, as the driver writes them in a one-field document.
+	one, err := bson.MarshalExtJSON(bson.D{{Key: "v", Value: v}}, v.Type == bson.TypeDouble, false)
+	if err != nil {
+		return nil, err
+	}
+	return append(dst, one[len(`{"v":`):len(one)-1]...), nil
 }

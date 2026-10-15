@@ -3,8 +3,11 @@ package executors
 import (
 	"context"
 	"errors"
+	"fmt"
+	"os/exec"
 	"strings"
 	"testing"
+	"time"
 
 	agentv1 "github.com/ownship/agent/internal/gen/ownship/agent/v1"
 )
@@ -77,5 +80,57 @@ func TestRunStatementsRollsBackOnFailure(t *testing.T) {
 	_ = runStatements(context.Background(), cmd, "BEGIN READ ONLY", raw, exec)
 	if got := strings.Join(log, ","); got != "BEGIN READ ONLY,a,COMMIT" {
 		t.Fatalf("read-only must open a read-only transaction, got %s", got)
+	}
+}
+
+type stubDbOrch struct {
+	Orchestrator
+	dials int
+}
+
+func (o *stubDbOrch) DialAddr(context.Context, string, uint32) (string, error) {
+	o.dials++
+	return fmt.Sprintf("10.0.0.%d:5432", o.dials), nil
+}
+
+func (o *stubDbOrch) AppExecCmd(ctx context.Context, _, _ string) (*exec.Cmd, error) {
+	return exec.CommandContext(ctx, "printf", `u\npw\ndb`), nil
+}
+
+func TestDbQueryRetriesAStaleCachedTargetOnce(t *testing.T) {
+	orch := &stubDbOrch{}
+	d := &Deployer{orch: orch}
+	var addrs []string
+	prev := dbRunners["postgres"]
+	t.Cleanup(func() { dbRunners["postgres"] = prev; dbTargets.drop("svc-retry") })
+	dbRunners["postgres"] = func(_ context.Context, tg dbTarget, _ *agentv1.DbQuery, res *agentv1.DbQueryResult) error {
+		addrs = append(addrs, tg.addr)
+		if tg.addr == "10.0.0.1:5432" {
+			return connectFailed(errors.New("connection refused"))
+		}
+		res.Results = append(res.Results, &agentv1.DbResultSet{Command: "SELECT 1"})
+		return nil
+	}
+	var got *agentv1.DbQueryResult
+	emit := func(e *agentv1.Event) error { got = e.GetDbQueryResult(); return nil }
+	cmd := &agentv1.DbQuery{ServiceId: "svc-retry", Engine: "postgres", Statements: []*agentv1.DbStatement{{Sql: "select 1"}}}
+
+	// Cold: a fresh lookup that fails is reported, not retried.
+	if err := d.DbQuery(context.Background(), cmd, emit); err != nil {
+		t.Fatal(err)
+	}
+	if got.GetError() == "" || len(addrs) != 1 {
+		t.Fatalf("a fresh target must not be retried: %v %q", addrs, got.GetError())
+	}
+
+	// Warm but stale: the cached address fails to connect, so it is looked up again once.
+	dbTargets.put("svc-retry", dbTarget{addr: "10.0.0.1:5432", user: "u", password: "pw", at: time.Now()})
+	orch.dials = 1
+	addrs = nil
+	if err := d.DbQuery(context.Background(), cmd, emit); err != nil {
+		t.Fatal(err)
+	}
+	if got.GetError() != "" || len(got.GetResults()) != 1 || strings.Join(addrs, ",") != "10.0.0.1:5432,10.0.0.2:5432" {
+		t.Fatalf("stale target not retried: %v %q", addrs, got.GetError())
 	}
 }

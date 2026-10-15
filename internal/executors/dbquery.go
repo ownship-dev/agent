@@ -16,18 +16,20 @@ import (
 	"github.com/go-sql-driver/mysql"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgtype"
+	"golang.org/x/sync/singleflight"
 
 	agentv1 "github.com/ownship/agent/internal/gen/ownship/agent/v1"
 )
 
 const (
-	dbDefaultMaxRows   = 1000
-	dbHardMaxRows      = 10000
-	dbDefaultTimeout   = 30 * time.Second
-	dbHardMaxTimeout   = 5 * time.Minute
-	dbMaxCellBytes     = 64 * 1024
-	dbMaxResultBytes   = 8 << 20
-	dbCredentialMaxAge = 5 * time.Minute
+	dbDefaultMaxRows = 1000
+	dbHardMaxRows    = 10000
+	dbDefaultTimeout = 30 * time.Second
+	dbHardMaxTimeout = 5 * time.Minute
+	dbMaxCellBytes   = 64 * 1024
+	dbMaxResultBytes = 8 << 20
+	// A failed connect evicts the entry anyway, so a long life only saves cold lookups.
+	dbCredentialMaxAge = 30 * time.Minute
 )
 
 // Credentials come from the service container's env, never the control-plane stream.
@@ -53,9 +55,24 @@ type dbTarget struct {
 type dbTargetCache struct {
 	mu sync.Mutex
 	m  map[string]dbTarget
+	// The studio fires several requests at once; one cold lookup serves them all.
+	resolving singleflight.Group
 }
 
 var dbTargets = &dbTargetCache{m: map[string]dbTarget{}}
+
+// dbConnectError marks a failure before any statement ran, so a retry can't replay a write.
+type dbConnectError struct{ err error }
+
+func (e *dbConnectError) Error() string { return e.err.Error() }
+func (e *dbConnectError) Unwrap() error { return e.err }
+
+func connectFailed(err error) error {
+	if err == nil {
+		return nil
+	}
+	return &dbConnectError{err}
+}
 
 func (c *dbTargetCache) get(id string) (dbTarget, bool) {
 	c.mu.Lock()
@@ -101,12 +118,24 @@ func (d *Deployer) DbQuery(ctx context.Context, cmd *agentv1.DbQuery, emit Emit)
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
-	target, err := d.dbTarget(ctx, cmd)
+	target, cached, err := d.dbTarget(ctx, cmd)
 	if err != nil {
 		res.Error = err.Error()
 		return reply()
 	}
-	if err := dbRunners[cmd.GetEngine()](ctx, target, cmd, res); err != nil {
+	err = dbRunners[cmd.GetEngine()](ctx, target, cmd, res)
+	var connErr *dbConnectError
+	if err != nil && cached && errors.As(err, &connErr) && ctx.Err() == nil {
+		// A restarted container moves its address or password; look both up again once.
+		dbTargets.drop(cmd.GetServiceId())
+		if target, _, err = d.dbTarget(ctx, cmd); err != nil {
+			res.Error = err.Error()
+			return reply()
+		}
+		res.Results, res.Error, res.ErrorDetail, res.ErrorStatement = nil, "", "", 0
+		err = dbRunners[cmd.GetEngine()](ctx, target, cmd, res)
+	}
+	if err != nil {
 		// Stale address or rotated password: re-read both next time.
 		dbTargets.drop(cmd.GetServiceId())
 		if res.Error == "" {
@@ -119,10 +148,21 @@ func (d *Deployer) DbQuery(ctx context.Context, cmd *agentv1.DbQuery, emit Emit)
 	return reply()
 }
 
-func (d *Deployer) dbTarget(ctx context.Context, cmd *agentv1.DbQuery) (dbTarget, error) {
+// dbTarget reports whether the target came from the cache, so only a stale one is retried.
+func (d *Deployer) dbTarget(ctx context.Context, cmd *agentv1.DbQuery) (dbTarget, bool, error) {
 	if t, ok := dbTargets.get(cmd.GetServiceId()); ok {
-		return t, nil
+		return t, true, nil
 	}
+	v, err, _ := dbTargets.resolving.Do(cmd.GetServiceId(), func() (any, error) {
+		return d.resolveDbTarget(ctx, cmd)
+	})
+	if err != nil {
+		return dbTarget{}, false, err
+	}
+	return v.(dbTarget), false, nil
+}
+
+func (d *Deployer) resolveDbTarget(ctx context.Context, cmd *agentv1.DbQuery) (dbTarget, error) {
 	addr, err := d.orch.DialAddr(ctx, cmd.GetServiceId(), cmd.GetPort())
 	if err != nil {
 		return dbTarget{}, fmt.Errorf("database is not reachable: %w", err)
@@ -201,7 +241,7 @@ func runPostgres(ctx context.Context, t dbTarget, cmd *agentv1.DbQuery, res *age
 	}).String()
 	conn, err := pgconn.Connect(ctx, dsn)
 	if err != nil {
-		return err
+		return connectFailed(err)
 	}
 	// A fresh ctx still sends a clean Terminate if the request expired.
 	defer conn.Close(context.Background())
@@ -320,8 +360,12 @@ func runMySQL(ctx context.Context, t dbTarget, cmd *agentv1.DbQuery, res *agentv
 	defer db.Close()
 	// One connection, so a transaction spans every statement.
 	conn, err := db.Conn(ctx)
+	if err == nil {
+		// db.Conn can hand back a connection that only fails on first use.
+		err = conn.PingContext(ctx)
+	}
 	if err != nil {
-		return err
+		return connectFailed(err)
 	}
 	defer conn.Close()
 

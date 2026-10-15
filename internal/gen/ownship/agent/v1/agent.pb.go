@@ -935,8 +935,10 @@ type DbQuery struct {
 	ReadOnly       bool   `protobuf:"varint,8,opt,name=read_only,json=readOnly,proto3" json:"read_only,omitempty"`
 	MaxRows        uint32 `protobuf:"varint,9,opt,name=max_rows,json=maxRows,proto3" json:"max_rows,omitempty"`
 	TimeoutSeconds uint32 `protobuf:"varint,10,opt,name=timeout_seconds,json=timeoutSeconds,proto3" json:"timeout_seconds,omitempty"`
-	unknownFields  protoimpl.UnknownFields
-	sizeCache      protoimpl.SizeCache
+	// Mongo: Int64 and whole doubles stay wrapped, so an edited document keeps its types.
+	TypedJson     bool `protobuf:"varint,11,opt,name=typed_json,json=typedJson,proto3" json:"typed_json,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *DbQuery) Reset() {
@@ -1037,6 +1039,13 @@ func (x *DbQuery) GetTimeoutSeconds() uint32 {
 		return x.TimeoutSeconds
 	}
 	return 0
+}
+
+func (x *DbQuery) GetTypedJson() bool {
+	if x != nil {
+		return x.TypedJson
+	}
+	return false
 }
 
 type DbStatement struct {
@@ -7304,7 +7313,7 @@ const file_ownship_agent_v1_agent_proto_rawDesc = "" +
 	"\x0fAdoptedWorkload\x12\x1f\n" +
 	"\vworkload_id\x18\x01 \x01(\tR\n" +
 	"workloadId\x12\x15\n" +
-	"\x06lxc_id\x18\x02 \x01(\tR\x05lxcId\"\xd1\x02\n" +
+	"\x06lxc_id\x18\x02 \x01(\tR\x05lxcId\"\xf0\x02\n" +
 	"\aDbQuery\x12\x1d\n" +
 	"\n" +
 	"request_id\x18\x01 \x01(\tR\trequestId\x12\x1d\n" +
@@ -7320,7 +7329,9 @@ const file_ownship_agent_v1_agent_proto_rawDesc = "" +
 	"\tread_only\x18\b \x01(\bR\breadOnly\x12\x19\n" +
 	"\bmax_rows\x18\t \x01(\rR\amaxRows\x12'\n" +
 	"\x0ftimeout_seconds\x18\n" +
-	" \x01(\rR\x0etimeoutSeconds\"x\n" +
+	" \x01(\rR\x0etimeoutSeconds\x12\x1d\n" +
+	"\n" +
+	"typed_json\x18\v \x01(\bR\ttypedJson\"x\n" +
 	"\vDbStatement\x12\x10\n" +
 	"\x03sql\x18\x01 \x01(\tR\x03sql\x121\n" +
 	"\x06params\x18\x02 \x03(\v2\x19.ownship.agent.v1.DbValueR\x06params\x12$\n" +
