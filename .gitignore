@@ -1,0 +1,16 @@
+# Build output (make build / make build-all)
+/ownship-agent
+/agent
+/dist/
+
+# Go tooling
+*.test
+*.out
+coverage.*
+
+# Local state and editors
+.env
+*.token
+.DS_Store
+.idea/
+.vscode/
