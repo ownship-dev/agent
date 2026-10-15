@@ -10,12 +10,16 @@ type engineBackup struct {
 }
 
 var engineBackups = map[string]engineBackup{
+	// Every database on the server, not one: users create their own from the studio. An older
+	// single-database dump still restores into POSTGRES_DB, which only older services set.
 	"postgres": {
-		dumpScript:    `PGPASSWORD="$POSTGRES_PASSWORD" pg_dump --clean --if-exists -h 127.0.0.1 -U "$POSTGRES_USER" "$POSTGRES_DB"`,
-		restoreScript: `PGPASSWORD="$POSTGRES_PASSWORD" psql -q -h 127.0.0.1 -U "$POSTGRES_USER" -d "$POSTGRES_DB" -f -`,
+		dumpScript:    `PGPASSWORD="$POSTGRES_PASSWORD" pg_dumpall --clean --if-exists -h 127.0.0.1 -U "${POSTGRES_USER:-postgres}"`,
+		restoreScript: `PGPASSWORD="$POSTGRES_PASSWORD" psql -q -h 127.0.0.1 -U "${POSTGRES_USER:-postgres}" -d "${POSTGRES_DB:-postgres}" -f -`,
 	},
 	"mysql": {
-		dumpScript:    `MYSQL_PWD="$MYSQL_ROOT_PASSWORD" mysqldump -uroot --databases "$MYSQL_DATABASE" --add-drop-database`,
+		dumpScript: `export MYSQL_PWD="$MYSQL_ROOT_PASSWORD"; ` +
+			`dbs=$(mysql -uroot -N -B -e "select schema_name from information_schema.schemata where schema_name not in ('mysql','information_schema','performance_schema','sys')") || exit 1; ` +
+			`if [ -z "$dbs" ]; then echo '-- no user databases'; else mysqldump -uroot --add-drop-database --routines --events --databases $dbs; fi`,
 		restoreScript: `MYSQL_PWD="$MYSQL_ROOT_PASSWORD" mysql -uroot`,
 	},
 	"mongo": {

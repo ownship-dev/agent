@@ -34,7 +34,7 @@ const (
 
 // Credentials come from the service container's env, never the control-plane stream.
 var dbCredentialScripts = map[string]string{
-	"postgres": `printf '%s\n%s\n%s' "$POSTGRES_USER" "$POSTGRES_PASSWORD" "$POSTGRES_DB"`,
+	"postgres": `printf '%s\n%s\n%s' "${POSTGRES_USER:-postgres}" "$POSTGRES_PASSWORD" "${POSTGRES_DB:-${POSTGRES_USER:-postgres}}"`,
 	"mysql":    `printf '%s\n%s\n%s' root "$MYSQL_ROOT_PASSWORD" "$MYSQL_DATABASE"`,
 	"redis":    `printf '%s\n%s\n%s' default "$REDIS_PASSWORD" 0`,
 	"mongo":    `printf '%s\n%s\n%s' "$MONGO_INITDB_ROOT_USERNAME" "$MONGO_INITDB_ROOT_PASSWORD" admin`,
