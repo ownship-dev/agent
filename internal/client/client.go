@@ -22,9 +22,13 @@ import (
 const (
 	heartbeatInterval = 20 * time.Second
 	metricsInterval   = 30 * time.Second
-	// A workload is marked missing after two absent reports (~10 min).
-	stateInterval    = 5 * time.Minute
-	hardwareInterval = 5 * time.Minute
+	// A workload is marked missing after two absent reports; a watched removal skips the wait.
+	stateInterval = time.Minute
+	// Lets a burst of removals settle into one report.
+	stateDebounce = 2 * time.Second
+	// The control plane needs a second absent report before it marks a workload missing.
+	stateConfirmDelay = 10 * time.Second
+	hardwareInterval  = 5 * time.Minute
 	// RAPL power needs two reads, so it appears from the second report.
 	hardwareFirstDelay = 30 * time.Second
 	minBackoff         = 1 * time.Second
@@ -314,14 +318,33 @@ func (c *Client) stateEvent(ctx context.Context) *agentv1.Event {
 func (c *Client) reportState(ctx context.Context, emit executors.Emit) {
 	ticker := time.NewTicker(stateInterval)
 	defer ticker.Stop()
+	removed := make(chan struct{}, 1)
+	if w, ok := c.exec.(executors.InventoryWatcher); ok {
+		go w.WatchInventory(ctx, func() {
+			select {
+			case removed <- struct{}{}:
+			default:
+			}
+		})
+	}
+	var confirm <-chan time.Time
 	for {
 		select {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			if err := emit(c.stateEvent(ctx)); err != nil {
+		case <-removed:
+			select {
+			case <-ctx.Done():
 				return
+			case <-time.After(stateDebounce):
 			}
+			confirm = time.After(stateConfirmDelay)
+		case <-confirm:
+			confirm = nil
+		}
+		if err := emit(c.stateEvent(ctx)); err != nil {
+			return
 		}
 	}
 }
