@@ -8,6 +8,7 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -81,6 +82,9 @@ func Apply(ctx context.Context, downloadURL, signatureB64, newVersion, currentVe
 	return nil
 }
 
+// ErrNotNewer means the latest release is not newer than this binary.
+var ErrNotNewer = errors.New("latest release is not newer")
+
 // SelfUpdate installs the latest verified release. It does not re-exec; the caller restarts.
 func SelfUpdate(ctx context.Context, goos, goarch string) (path, sum string, err error) {
 	base, err := latestBase()
@@ -93,7 +97,7 @@ func SelfUpdate(ctx context.Context, goos, goarch string) (path, sum string, err
 		return "", "", err
 	}
 	if !version.Newer(latest, config.Version) {
-		return "", "", fmt.Errorf("refusing downgrade: %s <= current %s", latest, config.Version)
+		return "", "", fmt.Errorf("%w: %s <= current %s", ErrNotNewer, latest, config.Version)
 	}
 	bin := fmt.Sprintf("agent-%s-%s", goos, goarch)
 

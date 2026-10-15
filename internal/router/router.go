@@ -6,7 +6,10 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"os"
+	"runtime"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/ownship/agent/internal/config"
@@ -20,7 +23,7 @@ const seenCap = 2048
 
 // Capabilities names the commands added after the original set, announced in Hello.
 // A new live-channel command joins here, or the control plane refuses it.
-var Capabilities = []string{"db_query"}
+var Capabilities = []string{"db_query", "self_update"}
 
 type Router struct {
 	exec executors.Executor
@@ -147,6 +150,10 @@ func (r *Router) Handle(ctx context.Context, cmd *agentv1.Command, emit executor
 		})
 	case *agentv1.Command_AgentUpdate:
 		u := cmd.GetAgentUpdate()
+		if u.GetDownloadUrl() == "" {
+			r.selfUpdate(ctx, emit)
+			return
+		}
 		r.log.Info("applying agent update", "version", u.GetVersion())
 		// On success this re-execs and never returns.
 		if err := updater.Apply(ctx, u.GetDownloadUrl(), u.GetSignature(), u.GetVersion(), config.Version); err != nil {
@@ -156,6 +163,30 @@ func (r *Router) Handle(ctx context.Context, cmd *agentv1.Command, emit executor
 	default:
 		r.log.Warn("unhandled command", "id", cmd.GetId())
 		_ = emit(failure("", fmt.Errorf("unhandled command type")))
+	}
+}
+
+// selfUpdate installs the latest release from the signed channel the hourly loop uses, so a
+// pushed update needs no per-binary signature from the control plane.
+func (r *Router) selfUpdate(ctx context.Context, emit executors.Emit) {
+	ctx, cancel := context.WithTimeout(ctx, commandTimeout)
+	defer cancel()
+	exe, sum, err := updater.SelfUpdate(ctx, runtime.GOOS, runtime.GOARCH)
+	if errors.Is(err, updater.ErrNotNewer) {
+		// A redelivered push lands after the restart it caused.
+		r.log.Info("agent update requested, already on the latest release")
+		return
+	}
+	if err != nil {
+		r.log.Error("agent update failed", "err", err)
+		_ = emit(failure("", err))
+		return
+	}
+	r.log.Info("updated, restarting into new binary", "binary", exe, "sha256", sum)
+	if err := syscall.Exec(exe, os.Args, os.Environ()); err != nil {
+		// Exit so systemd restarts on the new binary.
+		r.log.Error("re-exec after update failed; exiting for service restart", "err", err)
+		os.Exit(0)
 	}
 }
 

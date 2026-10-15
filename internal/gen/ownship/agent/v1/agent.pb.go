@@ -3442,6 +3442,7 @@ func (x *NetworkUpdate) GetNetwork() *NetworkConfig {
 	return nil
 }
 
+// An empty download_url asks the agent to self-update from its signed release channel.
 type AgentUpdate struct {
 	state       protoimpl.MessageState `protogen:"open.v1"`
 	Version     string                 `protobuf:"bytes,1,opt,name=version,proto3" json:"version,omitempty"`
