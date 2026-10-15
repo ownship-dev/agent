@@ -1,4 +1,5 @@
-VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
+# 1.<commits on HEAD>: orderable, so the updater's downgrade guard works. Needs full history.
+VERSION ?= $(shell n=$$(git rev-list --count HEAD 2>/dev/null) && echo 1.$$n || echo dev)
 # Base64 ed25519 public key that signs releases. The real one is the compiled-in
 # default in updater.go — leave this EMPTY unless you run your own release bucket
 # signed with a different key. It must stay conditional below: an unconditional

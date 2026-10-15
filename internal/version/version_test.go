@@ -12,6 +12,12 @@ func TestNewer(t *testing.T) {
 		{"1.2.0", "1.2.0", false},
 		{"v2.0.0", "1.9.9", true},
 		{"1.10.0", "1.9.0", true},
+		// A numbered release always beats a legacy SHA, whatever its letters.
+		{"1.768", "f8b2b7a", true},
+		{"1.768", "a433c1c-dirty", true},
+		{"f8b2b7a", "1.768", false},
+		{"713fda6", "f8b2b7a", false},
+		{"1.1000", "1.999", true},
 	}
 	for _, c := range cases {
 		if got := Newer(c.a, c.b); got != c.want {
