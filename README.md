@@ -29,10 +29,6 @@ The full picture, including what keeps running when the control plane is down, i
 
 ## Verify a release
 
-Each release on this repository's Releases page carries the same signed files served from
-`assets.ownship.dev`, tagged with the version the binary reports, and points at the commit it
-was built from.
-
 Release public key: `5uvfn0cZ7/bKfnJ/nRBNox1/fQ7LlPr9B7nS0oq3QZQ=`
 
 ```sh
