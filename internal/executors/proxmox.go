@@ -1211,8 +1211,11 @@ func (o *ProxmoxLXC) sizeAndStart(ctx context.Context, vmid, workloadID string, 
 
 // startAndTrack starts the LXC, records the mapping and waits for an IP.
 func (o *ProxmoxLXC) startAndTrack(ctx context.Context, vmid, workloadID string) error {
-	if out, err := pct(ctx, "start", vmid).CombinedOutput(); err != nil {
-		return fmt.Errorf("start lxc: %s", strings.TrimSpace(string(out)))
+	// A redeploy reuses a running LXC, and pct start fails on one.
+	if out, _ := pct(ctx, "status", vmid).Output(); !strings.Contains(string(out), "running") {
+		if out, err := pct(ctx, "start", vmid).CombinedOutput(); err != nil {
+			return fmt.Errorf("start lxc: %s", strings.TrimSpace(string(out)))
+		}
 	}
 	if err := o.state.set(workloadID, vmid); err != nil {
 		return err

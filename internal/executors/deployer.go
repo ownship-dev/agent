@@ -282,7 +282,7 @@ func (d *Deployer) resolveImage(ctx context.Context, cmd *agentv1.Deploy, wl, id
 	image := cmd.GetImageRef()
 	repoBuild := image == ""
 	if !repoBuild {
-		logLine(agentv1.LogStream_LOG_STREAM_SYSTEM, "rolling back to "+image)
+		logLine(agentv1.LogStream_LOG_STREAM_SYSTEM, "using image "+image)
 		return image, repoBuild, nil
 	}
 	image = fmt.Sprintf("ownship/%s:%s", wl, shortID(id))
