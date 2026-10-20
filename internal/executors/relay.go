@@ -144,7 +144,7 @@ func (r *Relay) open(ctx context.Context, first *agentv1.RelayRequest) {
 func (r *Relay) run(ctx context.Context, id string, s *relaySession, first *agentv1.RelayRequest) error {
 	base, ok := r.resolve(first.GetWorkloadId())
 	if !ok {
-		return errors.New("the backup buddy is not running on this homelab")
+		return errors.New("the backup buddy is not running on this machine")
 	}
 	target, err := relayTarget(base, first.GetHead().GetPath())
 	if err != nil {

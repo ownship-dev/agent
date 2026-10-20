@@ -17,7 +17,7 @@ var (
 
 type Config struct {
 	ControlPlaneURL string
-	// Homelab token file (0600).
+	// Machine token file (0600).
 	TokenPath string
 	OS        string
 	Arch      string

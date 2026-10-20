@@ -150,7 +150,7 @@ func (o *ProxmoxLXC) run(ctx context.Context, kind EngineKind, spec RunSpec) (Ta
 	}
 
 	// Re-applied every deploy, since a reused LXC would otherwise keep the old password.
-	o.applyRootPassword(ctx, vmid, spec.MachinePassword, spec.LogLine)
+	o.applyRootPassword(ctx, vmid, spec.LxcPassword, spec.LogLine)
 	// Same for GPU passthrough.
 	hostGPU := detectGPUs(ctx, "/")
 	if err := o.applyGPUPassthrough(ctx, vmid, spec.Resources.GetGpu(), hostGPU, spec.LogLine); err != nil {
@@ -537,7 +537,7 @@ func (o *ProxmoxLXC) List(ctx context.Context) (Inventory, error) {
 		}
 	}
 	// Before Adopt, an untracked ownship LXC may be a mapping a reinstall lost. After it, a
-	// stray one (a failed create, another homelab on the cluster) must not mute detection.
+	// stray one (a failed create, another machine on the cluster) must not mute detection.
 	if !o.adopted.Load() {
 		for vmid, tagged := range lxcs {
 			if tagged && !trackedVmids[vmid] {
@@ -726,8 +726,8 @@ func (o *ProxmoxLXC) ExecArgs(ctx context.Context, workloadID string, inner []st
 	return o.lxcEngine(ctx, workloadID, vmid).ExecArgv(append(args, inner...)...), nil
 }
 
-// MachineExecArgs opens a shell in the LXC rather than the app container.
-func (o *ProxmoxLXC) MachineExecArgs(ctx context.Context, workloadID string, inner []string, tty bool) ([]string, error) {
+// LxcExecArgs opens a shell in the LXC rather than the app container.
+func (o *ProxmoxLXC) LxcExecArgs(ctx context.Context, workloadID string, inner []string, tty bool) ([]string, error) {
 	vmid, ok := o.state.get(workloadID)
 	if !ok {
 		return nil, fmt.Errorf("no LXC for workload %s", workloadID)
@@ -1388,7 +1388,7 @@ func (o *ProxmoxLXC) applyRootPassword(ctx context.Context, vmid, password strin
 	cmd := pct(ctx, "exec", vmid, "--", "chpasswd")
 	cmd.Stdin = strings.NewReader("root:" + password + "\n")
 	if out, err := cmd.CombinedOutput(); err != nil {
-		logLine(agentv1.LogStream_LOG_STREAM_SYSTEM, "could not set the machine root password: "+strings.TrimSpace(string(out)))
+		logLine(agentv1.LogStream_LOG_STREAM_SYSTEM, "could not set the LXC root password: "+strings.TrimSpace(string(out)))
 	}
 }
 

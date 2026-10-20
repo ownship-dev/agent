@@ -1,4 +1,4 @@
-// Package token stores the homelab token, the agent's only durable credential.
+// Package token stores the machine token, the agent's only durable credential.
 package token
 
 import (

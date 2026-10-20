@@ -91,7 +91,7 @@ func update(cfg config.Config, log *slog.Logger) error {
 	return nil
 }
 
-// pair exchanges a one-time code for the homelab token over plain HTTP, which works through
+// pair exchanges a one-time code for the machine token over plain HTTP, which works through
 // Cloudflare Tunnel.
 func pair(cfg config.Config, code string, log *slog.Logger) error {
 	body, err := proto.Marshal(&agentv1.PairRequest{
@@ -123,7 +123,7 @@ func pair(cfg config.Config, code string, log *slog.Logger) error {
 	if err := token.Save(cfg.TokenPath, pr.GetToken()); err != nil {
 		return err
 	}
-	log.Info("paired", "homelab_id", pr.GetHomelabId(), "token_path", cfg.TokenPath)
+	log.Info("paired", "machine_id", pr.GetMachineId(), "token_path", cfg.TokenPath)
 	return nil
 }
 

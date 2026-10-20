@@ -2,7 +2,7 @@
 //
 // Source: ownship/agent/v1/agent.proto
 
-// Contract between the agent-gateway and the homelab agent (bidi stream).
+// Contract between the agent-gateway and the machine agent (bidi stream).
 package agentv1connect
 
 import (
@@ -43,9 +43,9 @@ const (
 // AgentServiceClient is a client for the ownship.agent.v1.AgentService service.
 type AgentServiceClient interface {
 	// Pair a freshly installed agent to a user account using a one-time code.
-	// Returns the long-lived, revocable homelab token used to open the stream.
+	// Returns the long-lived, revocable machine token used to open the stream.
 	Pair(context.Context, *connect.Request[v1.PairRequest]) (*connect.Response[v1.PairResponse], error)
-	// The persistent bidirectional channel. Authenticated via the homelab token
+	// The persistent bidirectional channel. Authenticated via the machine token
 	// in request metadata. Server->agent = Command, agent->server = Event.
 	Connect(context.Context) *connect.BidiStreamForClient[v1.Event, v1.Command]
 }
@@ -95,9 +95,9 @@ func (c *agentServiceClient) Connect(ctx context.Context) *connect.BidiStreamFor
 // AgentServiceHandler is an implementation of the ownship.agent.v1.AgentService service.
 type AgentServiceHandler interface {
 	// Pair a freshly installed agent to a user account using a one-time code.
-	// Returns the long-lived, revocable homelab token used to open the stream.
+	// Returns the long-lived, revocable machine token used to open the stream.
 	Pair(context.Context, *connect.Request[v1.PairRequest]) (*connect.Response[v1.PairResponse], error)
-	// The persistent bidirectional channel. Authenticated via the homelab token
+	// The persistent bidirectional channel. Authenticated via the machine token
 	// in request metadata. Server->agent = Command, agent->server = Event.
 	Connect(context.Context, *connect.BidiStream[v1.Event, v1.Command]) error
 }

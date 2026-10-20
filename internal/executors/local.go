@@ -718,9 +718,9 @@ func (o *LocalDocker) ExecArgs(ctx context.Context, workloadID string, inner []s
 	return o.eng(ctx, workloadID).ExecArgv(append(args, inner...)...), nil
 }
 
-// MachineExecArgs is refused: the machine here is the agent host, not part of the workload.
-func (o *LocalDocker) MachineExecArgs(context.Context, string, []string, bool) ([]string, error) {
-	return nil, errors.New("this homelab runs plain Docker — the container is the whole workload, so there is no machine shell")
+// LxcExecArgs is refused: the machine here is the agent host, not part of the workload.
+func (o *LocalDocker) LxcExecArgs(context.Context, string, []string, bool) ([]string, error) {
+	return nil, errors.New("this machine runs plain Docker — the container is the whole workload, so there is no LXC shell")
 }
 
 func (o *LocalDocker) Destroy(ctx context.Context, workloadID string, keepVolumes bool) error {

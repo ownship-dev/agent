@@ -4,7 +4,7 @@
 // 	protoc        (unknown)
 // source: ownship/agent/v1/agent.proto
 
-// Contract between the agent-gateway and the homelab agent (bidi stream).
+// Contract between the agent-gateway and the machine agent (bidi stream).
 
 package agentv1
 
@@ -23,14 +23,14 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
-// APP is the container the project runs in; MACHINE is the LXC hosting it
-// (Proxmox only — a plain Docker workload has no separate machine layer).
+// APP is the container the project runs in; LXC is the LXC hosting it
+// (Proxmox only — a plain Docker workload has no separate LXC layer).
 type TerminalTarget int32
 
 const (
 	TerminalTarget_TERMINAL_TARGET_UNSPECIFIED TerminalTarget = 0
 	TerminalTarget_TERMINAL_TARGET_APP         TerminalTarget = 1
-	TerminalTarget_TERMINAL_TARGET_MACHINE     TerminalTarget = 2
+	TerminalTarget_TERMINAL_TARGET_LXC         TerminalTarget = 2
 )
 
 // Enum value maps for TerminalTarget.
@@ -38,12 +38,12 @@ var (
 	TerminalTarget_name = map[int32]string{
 		0: "TERMINAL_TARGET_UNSPECIFIED",
 		1: "TERMINAL_TARGET_APP",
-		2: "TERMINAL_TARGET_MACHINE",
+		2: "TERMINAL_TARGET_LXC",
 	}
 	TerminalTarget_value = map[string]int32{
 		"TERMINAL_TARGET_UNSPECIFIED": 0,
 		"TERMINAL_TARGET_APP":         1,
-		"TERMINAL_TARGET_MACHINE":     2,
+		"TERMINAL_TARGET_LXC":         2,
 	}
 )
 
@@ -362,7 +362,7 @@ func (x *PairRequest) GetAgent() *AgentInfo {
 
 type PairResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	HomelabId     string                 `protobuf:"bytes,1,opt,name=homelab_id,json=homelabId,proto3" json:"homelab_id,omitempty"`
+	MachineId     string                 `protobuf:"bytes,1,opt,name=machine_id,json=machineId,proto3" json:"machine_id,omitempty"`
 	Token         string                 `protobuf:"bytes,2,opt,name=token,proto3" json:"token,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -398,9 +398,9 @@ func (*PairResponse) Descriptor() ([]byte, []int) {
 	return file_ownship_agent_v1_agent_proto_rawDescGZIP(), []int{1}
 }
 
-func (x *PairResponse) GetHomelabId() string {
+func (x *PairResponse) GetMachineId() string {
 	if x != nil {
-		return x.HomelabId
+		return x.MachineId
 	}
 	return ""
 }
@@ -1852,7 +1852,7 @@ func (x *CheckImageUpdate) GetAuth() *RegistryAuth {
 }
 
 // Asks the agent to re-report its current workloads (a State event), so the
-// gateway can reconcile after the control plane and homelab drift out of sync.
+// gateway can reconcile after the control plane and machine drift out of sync.
 type RequestState struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	unknownFields protoimpl.UnknownFields
@@ -2341,7 +2341,7 @@ type Deploy struct {
 	// (the password is bcrypt-hashed in the proxy config; the health prober
 	// sends these credentials so the gate still sees the app).
 	BasicAuth *BasicAuth `protobuf:"bytes,21,opt,name=basic_auth,json=basicAuth,proto3" json:"basic_auth,omitempty"`
-	// Private links to sibling workloads on the same homelab: the agent resolves
+	// Private links to sibling workloads on the same machine: the agent resolves
 	// each target's internal address per orchestrator and injects it as env_key.
 	Links []*ProjectLink `protobuf:"bytes,22,rep,name=links,proto3" json:"links,omitempty"`
 	// Migration: restore these volume backups after creating the volumes and
@@ -2361,7 +2361,7 @@ type Deploy struct {
 	AllowRoot bool `protobuf:"varint,27,opt,name=allow_root,json=allowRoot,proto3" json:"allow_root,omitempty"`
 	// Proxmox: root password to apply to the workload's LXC so the console/SSH is
 	// usable. Re-applied on every deploy; empty leaves the account untouched.
-	MachinePassword string `protobuf:"bytes,28,opt,name=machine_password,json=machinePassword,proto3" json:"machine_password,omitempty"`
+	LxcPassword string `protobuf:"bytes,28,opt,name=lxc_password,json=lxcPassword,proto3" json:"lxc_password,omitempty"`
 	// Private ingress: served by the agent on the LAN or as a tailnet node, never public.
 	Lan       *LanTarget       `protobuf:"bytes,29,opt,name=lan,proto3" json:"lan,omitempty"`
 	Tailscale *TailscaleTarget `protobuf:"bytes,30,opt,name=tailscale,proto3" json:"tailscale,omitempty"`
@@ -2592,9 +2592,9 @@ func (x *Deploy) GetAllowRoot() bool {
 	return false
 }
 
-func (x *Deploy) GetMachinePassword() string {
+func (x *Deploy) GetLxcPassword() string {
 	if x != nil {
-		return x.MachinePassword
+		return x.LxcPassword
 	}
 	return ""
 }
@@ -2693,7 +2693,7 @@ type LanTarget struct {
 	state     protoimpl.MessageState `protogen:"open.v1"`
 	Hostnames []string               `protobuf:"bytes,1,rep,name=hostnames,proto3" json:"hostnames,omitempty"`
 	HttpsPort uint32                 `protobuf:"varint,2,opt,name=https_port,json=httpsPort,proto3" json:"https_port,omitempty"`
-	// The homelab's LAN domain. The CA is name-constrained to it, and every hostname
+	// The machine's LAN domain. The CA is name-constrained to it, and every hostname
 	// must sit under it, so a leaked CA key can't impersonate any other site.
 	CaDomain      string `protobuf:"bytes,3,opt,name=ca_domain,json=caDomain,proto3" json:"ca_domain,omitempty"`
 	unknownFields protoimpl.UnknownFields
@@ -4793,7 +4793,7 @@ func (x *VolumeFileList) GetError() string {
 	return ""
 }
 
-// One S3 request another homelab's agent sent to a backup buddy through the gateway, so
+// One S3 request another machine's agent sent to a backup buddy through the gateway, so
 // the buddy needs no inbound route. Live stream only: never queued, never replayed.
 type RelayRequest struct {
 	state     protoimpl.MessageState `protogen:"open.v1"`
@@ -5877,10 +5877,10 @@ type Hello struct {
 	// Deprecated: Marked as deprecated in ownship/agent/v1/agent.proto.
 	DockerVersion string      `protobuf:"bytes,3,opt,name=docker_version,json=dockerVersion,proto3" json:"docker_version,omitempty"`
 	Nodes         []*NodeInfo `protobuf:"bytes,4,rep,name=nodes,proto3" json:"nodes,omitempty"`
-	// Base LXC templates available on this homelab (Proxmox `vztmpl` images), for
+	// Base LXC templates available on this machine (Proxmox `vztmpl` images), for
 	// the project's base-template picker. Empty for the local Docker orchestrator.
 	Templates []string `protobuf:"bytes,5,rep,name=templates,proto3" json:"templates,omitempty"`
-	// Network bridges available on the homelab host.
+	// Network bridges available on the machine host.
 	Bridges []string `protobuf:"bytes,6,rep,name=bridges,proto3" json:"bridges,omitempty"`
 	// Public certificate of the agent's LAN CA, for owners to trust on their devices.
 	LanCaPem string `protobuf:"bytes,7,opt,name=lan_ca_pem,json=lanCaPem,proto3" json:"lan_ca_pem,omitempty"`
@@ -7278,7 +7278,7 @@ const file_ownship_agent_v1_agent_proto_rawDesc = "" +
 	"\x05agent\x18\x02 \x01(\v2\x1b.ownship.agent.v1.AgentInfoR\x05agent\"C\n" +
 	"\fPairResponse\x12\x1d\n" +
 	"\n" +
-	"homelab_id\x18\x01 \x01(\tR\thomelabId\x12\x14\n" +
+	"machine_id\x18\x01 \x01(\tR\tmachineId\x12\x14\n" +
 	"\x05token\x18\x02 \x01(\tR\x05token\"\xa0\v\n" +
 	"\aCommand\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12#\n" +
@@ -7437,7 +7437,7 @@ const file_ownship_agent_v1_agent_proto_rawDesc = "" +
 	"\n" +
 	"service_id\x18\x01 \x01(\tR\tserviceId\x12\x12\n" +
 	"\x04argv\x18\x02 \x03(\tR\x04argv\x12,\n" +
-	"\x03env\x18\x03 \x03(\v2\x1a.ownship.agent.v1.EnvEntryR\x03env\"\x83\f\n" +
+	"\x03env\x18\x03 \x03(\v2\x1a.ownship.agent.v1.EnvEntryR\x03env\"\xfb\v\n" +
 	"\x06Deploy\x12#\n" +
 	"\rdeployment_id\x18\x01 \x01(\tR\fdeploymentId\x12\x1d\n" +
 	"\n" +
@@ -7474,8 +7474,8 @@ const file_ownship_agent_v1_agent_proto_rawDesc = "" +
 	"\x05hooks\x18\x19 \x01(\v2\x1d.ownship.agent.v1.DeployHooksR\x05hooks\x12&\n" +
 	"\x0fwake_on_request\x18\x1a \x01(\bR\rwakeOnRequest\x12\x1d\n" +
 	"\n" +
-	"allow_root\x18\x1b \x01(\bR\tallowRoot\x12)\n" +
-	"\x10machine_password\x18\x1c \x01(\tR\x0fmachinePassword\x12-\n" +
+	"allow_root\x18\x1b \x01(\bR\tallowRoot\x12!\n" +
+	"\flxc_password\x18\x1c \x01(\tR\vlxcPassword\x12-\n" +
 	"\x03lan\x18\x1d \x01(\v2\x1b.ownship.agent.v1.LanTargetR\x03lan\x12?\n" +
 	"\ttailscale\x18\x1e \x01(\v2!.ownship.agent.v1.TailscaleTargetR\ttailscale\x129\n" +
 	"\acompose\x18\x1f \x01(\v2\x1f.ownship.agent.v1.ComposeConfigR\acompose\x12L\n" +
@@ -7855,11 +7855,11 @@ const file_ownship_agent_v1_agent_proto_rawDesc = "" +
 	"\x06lxc_id\x18\x01 \x01(\tR\x05lxcId\x12\x0e\n" +
 	"\x02ip\x18\x02 \x01(\tR\x02ip\x12!\n" +
 	"\fcontainer_id\x18\x03 \x01(\tR\vcontainerId\x12!\n" +
-	"\fimage_digest\x18\x04 \x01(\tR\vimageDigest*g\n" +
+	"\fimage_digest\x18\x04 \x01(\tR\vimageDigest*c\n" +
 	"\x0eTerminalTarget\x12\x1f\n" +
 	"\x1bTERMINAL_TARGET_UNSPECIFIED\x10\x00\x12\x17\n" +
-	"\x13TERMINAL_TARGET_APP\x10\x01\x12\x1b\n" +
-	"\x17TERMINAL_TARGET_MACHINE\x10\x02*\x93\x01\n" +
+	"\x13TERMINAL_TARGET_APP\x10\x01\x12\x17\n" +
+	"\x13TERMINAL_TARGET_LXC\x10\x02*\x93\x01\n" +
 	"\x0fContainerEngine\x12 \n" +
 	"\x1cCONTAINER_ENGINE_UNSPECIFIED\x10\x00\x12\x1b\n" +
 	"\x17CONTAINER_ENGINE_DOCKER\x10\x01\x12\x1b\n" +

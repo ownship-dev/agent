@@ -26,7 +26,7 @@ DIST := dist
 build:
 	go build -ldflags "$(LDFLAGS)" -o $(BIN) .
 
-# Build + install to /usr/local/bin (run on the homelab host).
+# Build + install to /usr/local/bin (run on the machine host).
 install: build
 	install -m 0755 $(BIN) /usr/local/bin/$(BIN)
 

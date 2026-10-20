@@ -69,19 +69,19 @@ func (m *TerminalManager) open(ctx context.Context, in *agentv1.TerminalInput) {
 	// come from the container's own env, never argv or the wire.
 	workload := in.GetProjectId()
 	inner := []string{"sh"}
-	machine := in.GetTarget() == agentv1.TerminalTarget_TERMINAL_TARGET_MACHINE
+	lxc := in.GetTarget() == agentv1.TerminalTarget_TERMINAL_TARGET_LXC
 	if ex := in.GetExec(); ex != nil && ex.GetServiceId() != "" && len(ex.GetArgv()) > 0 {
 		workload = ex.GetServiceId()
 		inner = ex.GetArgv()
-		machine = false
+		lxc = false
 		for _, kv := range ex.GetEnv() {
 			// Prefixed via `env`, never as argv secrets.
 			inner = append([]string{"env", kv.GetKey() + "=" + kv.GetValue()}, inner...)
 		}
 	}
 	execArgs := m.orch.ExecArgs
-	if machine {
-		execArgs = m.orch.MachineExecArgs
+	if lxc {
+		execArgs = m.orch.LxcExecArgs
 	}
 	argv, err := execArgs(ctx, workload, inner, true)
 	if err != nil {

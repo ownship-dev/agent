@@ -1,6 +1,6 @@
 # Ownship agent
 
-The agent that [Ownship](https://ownship.dev) runs on your homelab. It pairs with the hosted
+The agent that [Ownship](https://ownship.dev) runs on your machine. It pairs with the hosted
 control plane, then holds a single **outbound** WebSocket to it and receives commands over that
 stream: nothing on your network is opened inbound.
 

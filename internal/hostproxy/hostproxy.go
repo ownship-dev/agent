@@ -1,5 +1,5 @@
 // Package hostproxy is the reverse proxy shared by the agent's ingresses: the waker, the LAN
-// proxy and the tailnet nodes all route by Host to an app on this homelab.
+// proxy and the tailnet nodes all route by Host to an app on this machine.
 package hostproxy
 
 import (

@@ -172,7 +172,7 @@ func TestRelayRefusesUnknownWorkload(t *testing.T) {
 	}
 }
 
-// The path is chosen by another homelab's agent: it must never steer the request elsewhere.
+// The path is chosen by another machine's agent: it must never steer the request elsewhere.
 func TestRelayTargetStaysOnTheBuddy(t *testing.T) {
 	for _, p := range []string{"http://169.254.169.254/latest", "b/k", ""} {
 		if got, err := relayTarget("http://127.0.0.1:9000", p); err == nil {

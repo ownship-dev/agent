@@ -331,7 +331,7 @@ func (d *Deployer) buildRunSpec(cmd *agentv1.Deploy, wl, image string, env []*ag
 		Network:          cmd.GetNetwork(),
 		AllowRoot:        cmd.GetAllowRoot(),
 		IsManagedService: cmd.GetServiceId() != "",
-		MachinePassword:  cmd.GetMachinePassword(),
+		LxcPassword:      cmd.GetLxcPassword(),
 		Engine:           normalizeKind(cmd.GetContainerEngine()),
 	}
 	// On Proxmox, Run clones and builds inside the LXC.
@@ -464,7 +464,7 @@ func (d *Deployer) configurePrivateIngress(ctx context.Context, cmd *agentv1.Dep
 			}
 			if ca != "" {
 				newCA = ca
-				logLine(agentv1.LogStream_LOG_STREAM_SYSTEM, "created a LAN certificate authority for "+lan.GetCaDomain()+"; download it again from the homelab to trust it")
+				logLine(agentv1.LogStream_LOG_STREAM_SYSTEM, "created a LAN certificate authority for "+lan.GetCaDomain()+"; download it again from the machine to trust it")
 			}
 			for _, h := range lan.GetHostnames() {
 				logLine(agentv1.LogStream_LOG_STREAM_SYSTEM, "LAN https://"+h+" -> "+routeTarget)

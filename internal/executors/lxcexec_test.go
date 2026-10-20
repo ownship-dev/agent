@@ -33,28 +33,28 @@ func TestProxmoxExecArgsPerTarget(t *testing.T) {
 		t.Fatalf("app shell should enter the container, got %v", app)
 	}
 
-	machine, err := o.MachineExecArgs(ctx, "proj-1", []string{"sh"}, true)
+	machine, err := o.LxcExecArgs(ctx, "proj-1", []string{"sh"}, true)
 	if err != nil {
 		t.Fatal(err)
 	}
 	want := []string{"pct", "exec", "142", "--", "sh"}
 	if strings.Join(machine, " ") != strings.Join(want, " ") {
-		t.Fatalf("machine shell should stop at the LXC, got %v", machine)
+		t.Fatalf("LXC shell should stop at the LXC, got %v", machine)
 	}
 }
 
-func TestProxmoxMachineExecArgsUnknownWorkload(t *testing.T) {
+func TestProxmoxLxcExecArgsUnknownWorkload(t *testing.T) {
 	o := proxmoxWithLXC(t, "proj-1", "142")
-	if _, err := o.MachineExecArgs(context.Background(), "other", []string{"sh"}, true); err == nil {
+	if _, err := o.LxcExecArgs(context.Background(), "other", []string{"sh"}, true); err == nil {
 		t.Fatal("a workload with no LXC must not resolve to some other machine")
 	}
 }
 
-// Plain Docker has no machine layer; it must refuse rather than fall back to the
+// Plain Docker has no LXC layer; it must refuse rather than fall back to the
 // agent host, which is not part of the workload the caller is authorized for.
-func TestLocalDockerHasNoMachineShell(t *testing.T) {
+func TestLocalDockerHasNoLxcShell(t *testing.T) {
 	o := &LocalDocker{}
-	if _, err := o.MachineExecArgs(context.Background(), "proj-1", []string{"sh"}, true); err == nil {
-		t.Fatal("LocalDocker must refuse a machine shell")
+	if _, err := o.LxcExecArgs(context.Background(), "proj-1", []string{"sh"}, true); err == nil {
+		t.Fatal("LocalDocker must refuse an LXC shell")
 	}
 }

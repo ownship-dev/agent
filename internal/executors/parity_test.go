@@ -10,16 +10,16 @@ import (
 // RunSpec fields one orchestrator deliberately ignores. Any other field read by only one
 // orchestrator fails the test.
 var onlyOneOrchestrator = map[string]string{
-	"TargetNode":      "Proxmox cluster node; a Docker host has no nodes",
-	"BaseTemplate":    "LXC base template; LocalDocker runs images directly",
-	"TemplateVmid":    "golden CT template; Proxmox only",
-	"BaseOS":          "LXC base OS catalogue; Proxmox only",
-	"Network":         "LXC net0 (static/DHCP); LocalDocker has no per-workload network",
-	"MachinePassword": "root password of the LXC itself; Docker has no machine layer",
-	"Repo":            "Proxmox builds inside the LXC; LocalDocker builds on the host (Deployer, HostBuilds)",
-	"Cache":           "in-LXC checkout cache; LocalDocker's build cache lives in the Deployer",
-	"Build":           "build type for the in-LXC build; LocalDocker's build happens in the Deployer",
-	"RegistryAuth":    "LocalDocker logs in on the host before Run (deployer.go, HostBuilds)",
+	"TargetNode":   "Proxmox cluster node; a Docker host has no nodes",
+	"BaseTemplate": "LXC base template; LocalDocker runs images directly",
+	"TemplateVmid": "golden CT template; Proxmox only",
+	"BaseOS":       "LXC base OS catalogue; Proxmox only",
+	"Network":      "LXC net0 (static/DHCP); LocalDocker has no per-workload network",
+	"LxcPassword":  "root password of the LXC itself; Docker has no LXC layer",
+	"Repo":         "Proxmox builds inside the LXC; LocalDocker builds on the host (Deployer, HostBuilds)",
+	"Cache":        "in-LXC checkout cache; LocalDocker's build cache lives in the Deployer",
+	"Build":        "build type for the in-LXC build; LocalDocker's build happens in the Deployer",
+	"RegistryAuth": "LocalDocker logs in on the host before Run (deployer.go, HostBuilds)",
 }
 
 func TestRunSpecFieldsHaveOrchestratorParity(t *testing.T) {

@@ -1,5 +1,5 @@
 #!/usr/bin/env sh
-# Install the ownship homelab agent as a systemd service. Run on the host.
+# Install the ownship machine agent as a systemd service. Run on the host.
 #
 #   curl -fsSL https://assets.ownship.dev/install-agent.sh | sh -s -- pair <CODE>   # install + pair + start
 #   curl -fsSL https://assets.ownship.dev/install-agent.sh | sh                     # install only
@@ -199,7 +199,7 @@ fi
 echo "Installing service at $UNIT..."
 $SUDO tee "$UNIT" >/dev/null <<EOF
 [Unit]
-Description=Ownship homelab agent
+Description=Ownship machine agent
 After=network-online.target docker.service podman.socket
 Wants=network-online.target
 

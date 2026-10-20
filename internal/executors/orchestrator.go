@@ -55,7 +55,7 @@ type RunSpec struct {
 	// Managed databases need root to init their volume, so non-root is never forced.
 	IsManagedService bool
 	// LXC root password (Proxmox), re-applied every deploy; empty leaves it untouched.
-	MachinePassword string
+	LxcPassword string
 	// Compose replaces Image; the primary service takes the workload's name, port and env.
 	Compose *ComposeRun
 	// UNSPECIFIED means docker.
@@ -92,9 +92,9 @@ type Orchestrator interface {
 	StatsAll(ctx context.Context) (map[string]StatsSample, error)
 	// ExecArgs builds the argv to run inner in the container; tty requests a PTY.
 	ExecArgs(ctx context.Context, workloadID string, inner []string, tty bool) ([]string, error)
-	// MachineExecArgs targets the machine hosting the container (the LXC). LocalDocker errors:
+	// LxcExecArgs targets the machine hosting the container (the LXC). LocalDocker errors:
 	// the agent host is not part of the workload.
-	MachineExecArgs(ctx context.Context, workloadID string, inner []string, tty bool) ([]string, error)
+	LxcExecArgs(ctx context.Context, workloadID string, inner []string, tty bool) ([]string, error)
 	// LinkAddr is a sibling's internal address for private links.
 	LinkAddr(ctx context.Context, sourceWorkloadID, targetWorkloadID string, sourceEngine EngineKind, port uint32) (string, error)
 	// DialAddr is where the agent itself reaches a workload's port.

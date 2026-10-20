@@ -1,4 +1,4 @@
-// Package executors performs the side effects of commands on the homelab.
+// Package executors performs the side effects of commands on the machine.
 package executors
 
 import (
