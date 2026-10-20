@@ -24,6 +24,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/ownship/agent/internal/hostproxy"
 )
 
 const (
@@ -122,13 +124,13 @@ func (p *Proxy) apply(workload string, hosts []string, target string, port int, 
 	if _, err := url.Parse(target); err != nil {
 		return "", fmt.Errorf("lan target: %w", err)
 	}
-	caDomain = normalizeHost(caDomain)
+	caDomain = hostproxy.NormalizeHost(caDomain)
 	if !validHost(caDomain) {
 		return "", fmt.Errorf("lan domain %q is not valid", caDomain)
 	}
 	clean := make([]string, 0, len(hosts))
 	for _, h := range hosts {
-		h = normalizeHost(h)
+		h = hostproxy.NormalizeHost(h)
 		if !validHost(h) {
 			return "", fmt.Errorf("lan hostname %q is not valid", h)
 		}
@@ -183,7 +185,7 @@ func (p *Proxy) Remove(hosts []string) error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	for _, h := range hosts {
-		h = normalizeHost(h)
+		h = hostproxy.NormalizeHost(h)
 		delete(p.routes, h)
 		delete(p.certs, h)
 	}
@@ -251,7 +253,7 @@ func (p *Proxy) ensureListeningLocked(port int) error {
 }
 
 func (p *Proxy) serveHTTP(w http.ResponseWriter, r *http.Request) {
-	host := normalizeHost(r.Host)
+	host := hostproxy.NormalizeHost(r.Host)
 	p.mu.Lock()
 	rt, ok := p.routes[host]
 	var rp *httputil.ReverseProxy
@@ -274,21 +276,14 @@ func (p *Proxy) proxyForLocked(target string) *httputil.ReverseProxy {
 	if err != nil {
 		return nil
 	}
-	rp := &httputil.ReverseProxy{
-		// Keep the client's Host: the waker and most apps rely on it.
-		Rewrite: func(pr *httputil.ProxyRequest) {
-			pr.SetURL(u)
-			pr.Out.Host = pr.In.Host
-			pr.SetXForwarded()
-		},
-	}
+	rp := hostproxy.Fixed(u, hostproxy.Options{})
 	p.proxies[target] = rp
 	return rp
 }
 
 // certificate signs only routed hosts, so a stray SNI can't get arbitrary names signed.
 func (p *Proxy) certificate(hello *tls.ClientHelloInfo) (*tls.Certificate, error) {
-	host := normalizeHost(hello.ServerName)
+	host := hostproxy.NormalizeHost(hello.ServerName)
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	if _, ok := p.routes[host]; !ok || p.caCert == nil {
@@ -454,14 +449,6 @@ func (p *Proxy) saveLocked() error {
 		return err
 	}
 	return os.Rename(tmp, p.statePath())
-}
-
-func normalizeHost(h string) string {
-	h = strings.ToLower(strings.TrimSpace(h))
-	if host, _, err := net.SplitHostPort(h); err == nil {
-		h = host
-	}
-	return strings.TrimSuffix(h, ".")
 }
 
 func validHost(h string) bool {

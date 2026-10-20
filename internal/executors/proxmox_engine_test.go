@@ -58,14 +58,13 @@ func TestLxcScriptsFollowTheEngine(t *testing.T) {
 	}
 }
 
-func TestLxcBuildScriptPerEngine(t *testing.T) {
-	d := lxcNixpacksScript(NewDockerEngine())
-	if d != `cd "$1" && nixpacks build . --name "$2"` {
-		t.Errorf("docker %q", d)
-	}
-	p := lxcNixpacksScript(NewPodmanEngine())
-	if p != `cd "$1" && nixpacks build . --out . && podman build -f .nixpacks/Dockerfile -t "$2" .` {
-		t.Errorf("podman %q", p)
+func TestLxcBuildRunsTheHostStepsInsideTheContainer(t *testing.T) {
+	for _, step := range buildSteps(NewPodmanEngine(), "img", false) {
+		got := strings.Join(lxcStepCmd(context.Background(), "105", "/root/app", step).Args, " ")
+		want := `pct exec 105 -- sh -c cd "$1" && shift && exec "$@" sh /root/app ` + strings.Join(step, " ")
+		if got != want {
+			t.Errorf("argv %q, want %q", got, want)
+		}
 	}
 }
 

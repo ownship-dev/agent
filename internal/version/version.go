@@ -2,7 +2,6 @@
 package version
 
 import (
-	"regexp"
 	"strconv"
 	"strings"
 )
@@ -40,19 +39,10 @@ func Compare(a, b string) int {
 	return 0
 }
 
-// Newer ignores a leading "v" on either side. A bare commit SHA, how releases were versioned
-// before 1.<commit count>, has no order, so any numbered release is newer than it.
+// Newer ignores a leading "v" on either side.
 func Newer(a, b string) bool {
-	a, b = strings.TrimPrefix(a, "v"), strings.TrimPrefix(b, "v")
-	if IsLegacySHA(a) || IsLegacySHA(b) {
-		return !IsLegacySHA(a)
-	}
-	return Compare(a, b) > 0
+	return Compare(strings.TrimPrefix(a, "v"), strings.TrimPrefix(b, "v")) > 0
 }
-
-var legacySHA = regexp.MustCompile(`^[0-9a-f]{7,40}(-dirty)?$`)
-
-func IsLegacySHA(v string) bool { return legacySHA.MatchString(v) }
 
 func split(v string) []string {
 	return strings.FieldsFunc(v, func(r rune) bool {

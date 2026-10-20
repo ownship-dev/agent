@@ -40,11 +40,11 @@ func TestComposeFileMustStayInsideTheCheckout(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if data, err := readHostCompose(repo, "compose.yml"); err != nil || string(data) != "services: {}" {
+	if data, err := readCompose(t, repo, "compose.yml"); err != nil || string(data) != "services: {}" {
 		t.Fatalf("in-repo file: %q %v", data, err)
 	}
 	for _, rel := range []string{"evil.yml", "../" + filepath.Base(outside) + "/token", "/etc/passwd", ""} {
-		data, err := readHostCompose(repo, rel)
+		data, err := readCompose(t, repo, rel)
 		if err == nil || strings.Contains(string(data), "s3cret") {
 			t.Fatalf("%q was read: %q", rel, data)
 		}
@@ -78,7 +78,7 @@ func TestBuildPathsArePinnedInsideTheCheckout(t *testing.T) {
 	_ = os.Symlink(filepath.Join(outside, "Dockerfile"), filepath.Join(repo, "app", "evil.Dockerfile"))
 	_ = os.WriteFile(filepath.Join(outside, "Dockerfile"), []byte("FROM scratch"), 0o644)
 
-	resolve := hostBuildResolver(repo, filepath.Join(repo, "deploy"))
+	resolve := buildResolver(hostFS{}, repo, filepath.Join(repo, "deploy"))
 	ctx, df, err := resolve("../app", "Dockerfile")
 	if err != nil || ctx != filepath.Join(repo, "app") || df != filepath.Join(repo, "app", "Dockerfile") {
 		t.Fatalf("in-repo build: %q %q %v", ctx, df, err)
@@ -112,5 +112,42 @@ func TestSanitizedBuildUsesTheResolvedPaths(t *testing.T) {
 	}
 	if !strings.Contains(string(r.File), "context: /real/./app") {
 		t.Fatalf("output:\n%s", r.File)
+	}
+}
+
+func readCompose(t *testing.T, dir, rel string) ([]byte, error) {
+	root, err := filepath.EvalSymlinks(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	src, _, _, err := composeSource(hostFS{}, root, &ComposeRun{Path: rel})
+	return src, err
+}
+
+// mapFS stands in for a checkout read through pct exec: realpath resolves through links.
+type mapFS map[string]string
+
+func (m mapFS) realpath(p string) (string, error) {
+	if real, ok := m[p]; ok {
+		return real, nil
+	}
+	return "", os.ErrNotExist
+}
+func (m mapFS) readHead(p string, _ int) ([]byte, error) { return []byte("file:" + p), nil }
+
+func TestComposeSourceWorksOnAnyCheckout(t *testing.T) {
+	fs := mapFS{"/root/app/deploy": "/root/app/deploy", "/root/app/deploy/compose.yml": "/root/app/deploy/compose.yml", "/root/app/evil.yml": "/etc/shadow"}
+	src, dir, resolve, err := composeSource(fs, "/root/app", &ComposeRun{Path: "deploy/compose.yml"})
+	if err != nil || string(src) != "file:/root/app/deploy/compose.yml" || dir != "/root/app/deploy" || resolve == nil {
+		t.Fatalf("%q %q %v", src, dir, err)
+	}
+	if _, _, _, err := composeSource(fs, "/root/app", &ComposeRun{Path: "evil.yml"}); err == nil {
+		t.Fatal("a link out of the checkout was read")
+	}
+	if _, _, _, err := composeSource(fs, "", &ComposeRun{Path: "compose.yml"}); err == nil {
+		t.Fatal("a compose path without a repository was accepted")
+	}
+	if src, dir, _, err := composeSource(fs, "", &ComposeRun{Inline: "services: {}"}); err != nil || string(src) != "services: {}" || dir != "" {
+		t.Fatalf("inline: %q %q %v", src, dir, err)
 	}
 }

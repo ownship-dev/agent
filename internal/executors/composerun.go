@@ -70,30 +70,37 @@ func validComposePath(rel string) error {
 	return nil
 }
 
-// insideRoot resolves every symlink in p and refuses a result outside root: the agent runs
-// as root and the repo is untrusted.
-func insideRoot(root, p string) (string, error) {
-	full, err := filepath.EvalSymlinks(p)
+// checkoutFS reads an untrusted checkout, on the host or inside an LXC.
+type checkoutFS interface {
+	// realpath resolves every symlink in p and fails when p doesn't exist.
+	realpath(p string) (string, error)
+	readHead(p string, n int) ([]byte, error)
+}
+
+// inCheckout resolves p and refuses a result outside root: the agent runs as root and the
+// repo is untrusted.
+func inCheckout(fs checkoutFS, root, p string) (string, error) {
+	full, err := fs.realpath(p)
 	if err != nil {
-		return "", fmt.Errorf("%s not found in the repository", strings.TrimPrefix(p, root+string(filepath.Separator)))
+		return "", fmt.Errorf("%s not found in the repository", strings.TrimPrefix(p, root+"/"))
 	}
-	if inside, err := filepath.Rel(root, full); err != nil || inside == ".." || strings.HasPrefix(inside, ".."+string(filepath.Separator)) {
+	if full != root && !strings.HasPrefix(full, root+"/") {
 		return "", errors.New("a path resolves outside the repository")
 	}
 	return full, nil
 }
 
-// hostBuildResolver pins build contexts and Dockerfiles to real paths inside root.
-func hostBuildResolver(root, base string) func(string, string) (string, string, error) {
+// buildResolver pins build contexts and Dockerfiles to real paths inside root.
+func buildResolver(fs checkoutFS, root, base string) func(string, string) (string, string, error) {
 	return func(ctxRel, dfRel string) (string, string, error) {
-		ctx, err := insideRoot(root, filepath.Join(base, filepath.FromSlash(ctxRel)))
+		ctx, err := inCheckout(fs, root, path.Join(base, ctxRel))
 		if err != nil {
 			return "", "", fmt.Errorf("build context %s: %w", ctxRel, err)
 		}
 		if dfRel == "" {
 			return ctx, "", nil
 		}
-		df, err := insideRoot(root, filepath.Join(ctx, filepath.FromSlash(dfRel)))
+		df, err := inCheckout(fs, root, path.Join(ctx, dfRel))
 		if err != nil {
 			return "", "", fmt.Errorf("dockerfile %s: %w", dfRel, err)
 		}
@@ -101,28 +108,51 @@ func hostBuildResolver(root, base string) func(string, string) (string, string, 
 	}
 }
 
-func readHostCompose(dir, rel string) ([]byte, error) {
-	if err := validComposePath(rel); err != nil {
-		return nil, err
+// composeSource reads the compose file and picks the project directory, pinning every path
+// inside the checkout at root; root is empty when the project has no repository.
+func composeSource(fs checkoutFS, root string, c *ComposeRun) (src []byte, projectDir string, resolve func(string, string) (string, string, error), err error) {
+	if root != "" {
+		base := root
+		if c.Inline == "" {
+			if err := validComposePath(c.Path); err != nil {
+				return nil, "", nil, err
+			}
+			if base, err = inCheckout(fs, root, path.Join(root, path.Dir(c.Path))); err != nil {
+				return nil, "", nil, fmt.Errorf("compose file directory: %w", err)
+			}
+		}
+		projectDir, resolve = base, buildResolver(fs, root, base)
 	}
-	root, err := filepath.EvalSymlinks(dir)
+	if c.Inline != "" {
+		return []byte(c.Inline), projectDir, resolve, nil
+	}
+	if root == "" {
+		return nil, "", nil, errors.New("a compose path needs a repository")
+	}
+	if err := validComposePath(c.Path); err != nil {
+		return nil, "", nil, err
+	}
+	file, err := inCheckout(fs, root, path.Join(root, c.Path))
 	if err != nil {
-		return nil, err
+		return nil, "", nil, fmt.Errorf("compose file: %w", err)
 	}
-	full, err := insideRoot(root, filepath.Join(root, filepath.FromSlash(rel)))
-	if err != nil {
-		return nil, fmt.Errorf("compose file: %w", err)
+	if src, err = fs.readHead(file, maxComposeBytes+1); err != nil {
+		return nil, "", nil, fmt.Errorf("compose file %s could not be read", c.Path)
 	}
-	f, err := os.Open(full)
+	return src, projectDir, resolve, nil
+}
+
+type hostFS struct{}
+
+func (hostFS) realpath(p string) (string, error) { return filepath.EvalSymlinks(p) }
+
+func (hostFS) readHead(p string, n int) ([]byte, error) {
+	f, err := os.Open(p)
 	if err != nil {
 		return nil, err
 	}
 	defer f.Close()
-	data, err := io.ReadAll(io.LimitReader(f, maxComposeBytes+1))
-	if err != nil {
-		return nil, err
-	}
-	return data, nil
+	return io.ReadAll(io.LimitReader(f, int64(n)))
 }
 
 // composeUpArgs replaces the repo's .env with an empty one, since COMPOSE_* settings in it

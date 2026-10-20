@@ -619,7 +619,7 @@ func (d *Deployer) checkout(ctx context.Context, cmd *agentv1.Deploy, wl string,
 		return "", func() {}, err
 	}
 	if err := traced(ctx, "deploy.clone", func(c context.Context) error {
-		return gitSync(c, cmd.GetRepo(), workDir, logLine)
+		return gitSync(c, localGit{}, cmd.GetRepo(), workDir, true, logLine)
 	}); err != nil {
 		cleanup()
 		return "", func() {}, fmt.Errorf("git sync: %w", err)

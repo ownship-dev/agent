@@ -4,11 +4,9 @@ package tsingress
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"net"
 	"net/http"
-	"net/http/httputil"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -17,6 +15,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/ownship/agent/internal/hostproxy"
 	"tailscale.com/tsnet"
 )
 
@@ -140,24 +139,20 @@ func (i *Ingress) Ensure(ctx context.Context, workload, hostname, authKey, targe
 
 	r := &running{node: n, hostname: hostname}
 	r.target.Store(u)
-	proxy := &httputil.ReverseProxy{Rewrite: func(pr *httputil.ProxyRequest) {
-		pr.SetURL(r.target.Load())
-		pr.Out.Host = pr.In.Host
-		pr.SetXForwarded()
-	}}
+	proxy := hostproxy.To(r.target.Load, hostproxy.Options{})
 
 	plain, err := n.Listen("tcp", ":80")
 	if err != nil {
 		_ = n.Close()
 		return "", fmt.Errorf("tailscale listen :80: %w", err)
 	}
-	r.servers = append(r.servers, serve(plain, proxy))
+	r.servers = append(r.servers, hostproxy.Serve(plain, proxy))
 	r.url = "http://" + hostname
 	// HTTPS needs MagicDNS and HTTPS certificates on the tailnet; otherwise plain HTTP is used
 	// inside the already encrypted tailnet.
 	if domains := n.CertDomains(); len(domains) > 0 {
 		if tlsLn, err := n.ListenTLS("tcp", ":443"); err == nil {
-			r.servers = append(r.servers, serve(tlsLn, proxy))
+			r.servers = append(r.servers, hostproxy.Serve(tlsLn, proxy))
 			r.url = "https://" + domains[0]
 		}
 	}
@@ -203,16 +198,6 @@ func (i *Ingress) stopLocked(r *running) {
 		cancel()
 	}
 	_ = r.node.Close()
-}
-
-func serve(ln net.Listener, h http.Handler) *http.Server {
-	s := &http.Server{Handler: h, ReadHeaderTimeout: 10 * time.Second}
-	go func() {
-		if err := s.Serve(ln); err != nil && !errors.Is(err, http.ErrServerClosed) {
-			_ = ln.Close()
-		}
-	}()
-	return s
 }
 
 // Base keeps a malformed id inside dir.

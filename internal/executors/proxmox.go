@@ -8,7 +8,6 @@ import (
 	"net"
 	"os"
 	"os/exec"
-	"path"
 	"regexp"
 	"sort"
 	"strconv"
@@ -304,69 +303,22 @@ func (o *ProxmoxLXC) runComposeInLXC(ctx context.Context, eng *Engine, vmid stri
 	const repoDir = "/root/app"
 	hasRepo := spec.Repo.GetCloneUrl() != ""
 	if hasRepo {
-		if err := o.syncRepoInLXC(ctx, vmid, spec.Repo, repoDir, spec.Cache, spec.LogLine); err != nil {
+		if err := gitSync(ctx, lxcGit{o, vmid}, spec.Repo, repoDir, spec.Cache, spec.LogLine); err != nil {
 			return Target{}, err
 		}
 	}
 	// Kept outside the checkout, with every repo path pinned inside it.
 	const preparedDir = "/root/ownship-compose"
-	inRepo := func(p string) (string, error) {
-		out, err := pct(ctx, "exec", vmid, "--", "realpath", "-e", "--", p).Output()
-		real := strings.TrimSpace(string(out))
-		if err != nil {
-			return "", fmt.Errorf("%s not found in the repository", strings.TrimPrefix(p, repoDir+"/"))
-		}
-		if real != repoDir && !strings.HasPrefix(real, repoDir+"/") {
-			return "", errors.New("a path resolves outside the repository")
-		}
-		return real, nil
-	}
-	projectDir := preparedDir
-	var resolveBuild func(string, string) (string, string, error)
+	root := ""
 	if hasRepo {
-		base := repoDir
-		if spec.Compose.Inline == "" {
-			if err := validComposePath(spec.Compose.Path); err != nil {
-				return Target{}, err
-			}
-			b, err := inRepo(repoDir + "/" + path.Dir(spec.Compose.Path))
-			if err != nil {
-				return Target{}, fmt.Errorf("compose file directory: %w", err)
-			}
-			base = b
-		}
-		projectDir = base
-		resolveBuild = func(ctxRel, dfRel string) (string, string, error) {
-			c, err := inRepo(base + "/" + ctxRel)
-			if err != nil {
-				return "", "", fmt.Errorf("build context %s: %w", ctxRel, err)
-			}
-			if dfRel == "" {
-				return c, "", nil
-			}
-			d, err := inRepo(c + "/" + dfRel)
-			if err != nil {
-				return "", "", fmt.Errorf("dockerfile %s: %w", dfRel, err)
-			}
-			return c, d, nil
-		}
+		root = repoDir
 	}
-	var src []byte
-	if spec.Compose.Inline != "" {
-		src = []byte(spec.Compose.Inline)
-	} else {
-		if !hasRepo {
-			return Target{}, errors.New("a compose path needs a repository")
-		}
-		file, err := inRepo(repoDir + "/" + spec.Compose.Path)
-		if err != nil {
-			return Target{}, fmt.Errorf("compose file: %w", err)
-		}
-		out, err := pct(ctx, "exec", vmid, "--", "head", "-c", strconv.Itoa(maxComposeBytes+1), file).Output()
-		if err != nil {
-			return Target{}, fmt.Errorf("compose file %s could not be read", spec.Compose.Path)
-		}
-		src = out
+	src, projectDir, resolveBuild, err := composeSource(lxcFS{ctx, vmid}, root, spec.Compose)
+	if err != nil {
+		return Target{}, err
+	}
+	if projectDir == "" {
+		projectDir = preparedDir
 	}
 
 	const envPath = "/run/ownship-app.env"
@@ -1303,96 +1255,117 @@ func (o *ProxmoxLXC) imageUser(ctx context.Context, eng *Engine, image string) (
 // buildInLXC builds with the repo's Dockerfile if present or forced, else Nixpacks.
 func (o *ProxmoxLXC) buildInLXC(ctx context.Context, eng *Engine, vmid, image string, repo *agentv1.RepoSource, build *agentv1.BuildConfig, cache bool, logLine LogFunc) error {
 	const dir = "/root/app"
-	if err := o.syncRepoInLXC(ctx, vmid, repo, dir, cache, logLine); err != nil {
+	if err := gitSync(ctx, lxcGit{o, vmid}, repo, dir, cache, logLine); err != nil {
 		return err
 	}
 
-	useDockerfile := chooseDockerfile(build.GetType(), func() bool {
+	dockerfile := chooseDockerfile(build.GetType(), func() bool {
 		return pct(ctx, "exec", vmid, "--", "test", "-f", dir+"/Dockerfile").Run() == nil
 	})
-	if useDockerfile {
-		return runStreamingCmd(eng.Cmd(ctx, "build", "-t", image, dir), logLine)
-	}
-	install := "command -v nixpacks >/dev/null 2>&1 || curl -fsSL https://nixpacks.com/install.sh | bash"
-	if err := runStreaming(ctx, "", "pct", []string{"exec", vmid, "--", "sh", "-c", install}, logLine); err != nil {
-		return fmt.Errorf("install nixpacks in lxc: %w", err)
-	}
-	// dir and image are positional args, never part of the script.
-	return runStreaming(ctx, "", "pct",
-		[]string{"exec", vmid, "--", "sh", "-c", lxcNixpacksScript(eng), "sh", dir, image}, logLine)
-}
-
-// lxcNixpacksScript: Docker lets nixpacks build; Podman builds the plan nixpacks writes.
-func lxcNixpacksScript(eng *Engine) string {
-	if eng.Kind == KindDocker {
-		return `cd "$1" && nixpacks build . --name "$2"`
-	}
-	return `cd "$1" && nixpacks build . --out . && ` + eng.Bin + ` build -f .nixpacks/Dockerfile -t "$2" .`
-}
-
-// syncRepoInLXC fetches into a cached checkout, falling back to a fresh shallow clone.
-func (o *ProxmoxLXC) syncRepoInLXC(ctx context.Context, vmid string, repo *agentv1.RepoSource, dir string, cache bool, logLine LogFunc) error {
-	o.ensureGitInLXC(ctx, vmid)
-	if cache && pct(ctx, "exec", vmid, "--", "test", "-d", dir+"/.git").Run() == nil {
-		if err := o.updateRepoInLXC(ctx, vmid, repo, dir, logLine); err == nil {
-			return nil
+	if !dockerfile {
+		install := "command -v nixpacks >/dev/null 2>&1 || curl -fsSL https://nixpacks.com/install.sh | bash"
+		if err := runStreaming(ctx, "", "pct", []string{"exec", vmid, "--", "sh", "-c", install}, logLine); err != nil {
+			return fmt.Errorf("install nixpacks in lxc: %w", err)
 		}
-		logLine(agentv1.LogStream_LOG_STREAM_SYSTEM, "workspace update failed, falling back to fresh clone")
 	}
-	_ = pct(ctx, "exec", vmid, "--", "rm", "-rf", dir).Run()
-	return o.cloneRepoInLXC(ctx, vmid, repo, dir, logLine)
+	for _, step := range buildSteps(eng, image, dockerfile) {
+		if err := runStreamingCmd(lxcStepCmd(ctx, vmid, dir, step), logLine); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
-func (o *ProxmoxLXC) ensureGitInLXC(ctx context.Context, vmid string) {
-	gitScript := fmt.Sprintf(`command -v git >/dev/null 2>&1 || { %s
-}`, pkgInstallScript("git", "ca-certificates"))
-	_ = pct(ctx, "exec", vmid, "--", "sh", "-c", gitScript).Run()
+// lxcStepCmd runs a host build step inside the LXC from dir; dir and argv stay positional,
+// never part of the script.
+func lxcStepCmd(ctx context.Context, vmid, dir string, argv []string) *exec.Cmd {
+	return pct(ctx, append([]string{"exec", vmid, "--", "sh", "-c", `cd "$1" && shift && exec "$@"`, "sh", dir}, argv...)...)
 }
 
-// gitBaseArgs keeps a token or deploy key in a 0600 file in the LXC, never argv,
-// with the same protocol allowlist and SSH behaviour as hostGitAuth.
-func (o *ProxmoxLXC) gitBaseArgs(ctx context.Context, vmid string, repo *agentv1.RepoSource) ([]string, func(), error) {
-	args := append([]string{"exec", vmid, "--", "git"}, gitProtocolArgs()...)
+// lxcFS reads a checkout inside the LXC, resolving symlinks there rather than on the host.
+type lxcFS struct {
+	ctx  context.Context
+	vmid string
+}
+
+func (f lxcFS) realpath(p string) (string, error) {
+	out, err := pct(f.ctx, "exec", f.vmid, "--", "realpath", "-e", "--", p).Output()
+	return strings.TrimSpace(string(out)), err
+}
+
+func (f lxcFS) readHead(p string, n int) ([]byte, error) {
+	return pct(f.ctx, "exec", f.vmid, "--", "head", "-c", strconv.Itoa(n), "--", p).Output()
+}
+
+// lxcGit runs git inside a workload's LXC. Env can't cross pct exec, so a token or deploy
+// key goes in a 0600 file there instead, with the same protocol allowlist as the host.
+type lxcGit struct {
+	o    *ProxmoxLXC
+	vmid string
+}
+
+func (g lxcGit) git(ctx context.Context, args []string, _ []string) *exec.Cmd {
+	return pct(ctx, append([]string{"exec", g.vmid, "--", "git"}, args...)...)
+}
+
+func (g lxcGit) hasCheckout(ctx context.Context, dest string) bool {
+	return pct(ctx, "exec", g.vmid, "--", "test", "-d", dest+"/.git").Run() == nil
+}
+
+func (g lxcGit) removeAll(ctx context.Context, dest string) error {
+	_ = pct(ctx, "exec", g.vmid, "--", "rm", "-rf", dest).Run()
+	return nil
+}
+
+func (g lxcGit) auth(ctx context.Context, repo *agentv1.RepoSource, _ string) ([]string, []string, func(), error) {
+	g.o.ensureGitInLXC(ctx, g.vmid)
+	args := gitProtocolArgs()
 	var files []string
 	cleanup := func() {
 		if len(files) > 0 {
-			_ = pct(context.Background(), append([]string{"exec", vmid, "--", "rm", "-f"}, files...)...).Run()
+			_ = pct(context.Background(), append([]string{"exec", g.vmid, "--", "rm", "-f"}, files...)...).Run()
 		}
 	}
 	if token := repo.GetInstallationToken(); token != "" {
 		const tokenPath = "/run/ownship-git-token"
-		if err := o.writeEnvFile(ctx, vmid, tokenPath, token); err != nil {
-			return nil, nil, err
+		if err := g.o.writeEnvFile(ctx, g.vmid, tokenPath, token); err != nil {
+			return nil, nil, nil, err
 		}
 		files = append(files, tokenPath)
 		args = append(args, "-c",
 			`credential.helper=!f() { echo username=x-access-token; echo "password=$(cat `+tokenPath+`)"; }; f`)
 	}
 	if key := repo.GetSshPrivateKey(); key != "" {
-		o.ensureSSHInLXC(ctx, vmid)
+		g.o.ensureSSHInLXC(ctx, g.vmid)
 		const keyPath = "/run/ownship-deploy-key"
 		// Persistent, so a host key trusted on first use stays pinned.
 		const knownHosts = "/root/.ownship-known-hosts"
-		if err := o.writeEnvFile(ctx, vmid, keyPath, key+"\n"); err != nil {
+		if err := g.o.writeEnvFile(ctx, g.vmid, keyPath, key+"\n"); err != nil {
 			cleanup()
-			return nil, nil, err
+			return nil, nil, nil, err
 		}
 		files = append(files, keyPath)
 		pinned := repo.GetSshKnownHosts() != ""
 		if pinned {
-			if err := o.writeEnvFile(ctx, vmid, knownHosts, repo.GetSshKnownHosts()+"\n"); err != nil {
+			if err := g.o.writeEnvFile(ctx, g.vmid, knownHosts, repo.GetSshKnownHosts()+"\n"); err != nil {
 				cleanup()
-				return nil, nil, err
+				return nil, nil, nil, err
 			}
 		}
 		sshArgs, err := sshCommandArg(keyPath, knownHosts, pinned)
 		if err != nil {
 			cleanup()
-			return nil, nil, err
+			return nil, nil, nil, err
 		}
 		args = append(args, sshArgs...)
 	}
-	return args, cleanup, nil
+	return args, nil, cleanup, nil
+}
+
+func (o *ProxmoxLXC) ensureGitInLXC(ctx context.Context, vmid string) {
+	gitScript := fmt.Sprintf(`command -v git >/dev/null 2>&1 || { %s
+}`, pkgInstallScript("git", "ca-certificates"))
+	_ = pct(ctx, "exec", vmid, "--", "sh", "-c", gitScript).Run()
 }
 
 // ensureSSHInLXC: the package is openssh-client on apt, openssh-clients on dnf/yum.
@@ -1404,47 +1377,6 @@ elif command -v dnf >/dev/null 2>&1; then dnf install -y openssh-clients
 elif command -v yum >/dev/null 2>&1; then yum install -y openssh-clients
 fi`
 	_ = pct(ctx, "exec", vmid, "--", "sh", "-c", script).Run()
-}
-
-func (o *ProxmoxLXC) cloneRepoInLXC(ctx context.Context, vmid string, repo *agentv1.RepoSource, dir string, logLine LogFunc) error {
-	args, cleanup, err := o.gitBaseArgs(ctx, vmid, repo)
-	if err != nil {
-		return err
-	}
-	defer cleanup()
-	clone := append(args, "clone", "--depth", "1")
-	if ref := repo.GetRef(); ref != "" {
-		clone = append(clone, "--branch", ref)
-	}
-	clone = append(clone, "--end-of-options", repo.GetCloneUrl(), dir)
-	if err := runStreaming(ctx, "", "pct", clone, logLine); err != nil {
-		return fmt.Errorf("git clone in lxc: %w", err)
-	}
-	return nil
-}
-
-// updateRepoInLXC refreshes a checkout without recloning, like the host gitUpdate.
-func (o *ProxmoxLXC) updateRepoInLXC(ctx context.Context, vmid string, repo *agentv1.RepoSource, dir string, logLine LogFunc) error {
-	ref := repo.GetRef()
-	if ref == "" {
-		ref = "HEAD"
-	}
-	args, cleanup, err := o.gitBaseArgs(ctx, vmid, repo)
-	if err != nil {
-		return err
-	}
-	defer cleanup()
-	fetch := append(args, "-C", dir, "fetch", "--depth", "1", "--end-of-options", "origin", ref)
-	if err := runStreaming(ctx, "", "pct", fetch, logLine); err != nil {
-		return err
-	}
-	if err := runStreaming(ctx, "", "pct",
-		[]string{"exec", vmid, "--", "git", "-C", dir, "reset", "--hard", "FETCH_HEAD"}, logLine); err != nil {
-		return err
-	}
-	// Remove untracked files so the build context matches the commit.
-	return runStreaming(ctx, "", "pct",
-		[]string{"exec", vmid, "--", "git", "-C", dir, "clean", "-fd"}, logLine)
 }
 
 // applyRootPassword pipes the password to chpasswd to keep it off argv. Best-effort:

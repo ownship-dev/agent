@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"net"
 	"os/exec"
-	"path"
 	"path/filepath"
 	"slices"
 	"sort"
@@ -347,37 +346,27 @@ func (o *LocalDocker) runCompose(ctx context.Context, eng *Engine, spec RunSpec,
 	if err != nil {
 		return Target{}, err
 	}
-	var src []byte
-	var resolveBuild func(string, string) (string, string, error)
-	projectDir := work
+	root := ""
 	if spec.Compose.HostDir != "" {
-		root, err := filepath.EvalSymlinks(spec.Compose.HostDir)
+		if root, err = filepath.EvalSymlinks(spec.Compose.HostDir); err != nil {
+			return Target{}, err
+		}
+	}
+	src, projectDir, resolveBuild, err := composeSource(hostFS{}, root, spec.Compose)
+	if err != nil {
+		return Target{}, err
+	}
+	if projectDir == "" {
+		projectDir = work
+	}
+	// Rootless compose reads build contexts as its own user, so it gets a copy.
+	if root != "" && eng.Rootless {
+		staged, cleanupStaged, err := stageForRootless(ctx, eng, root)
 		if err != nil {
 			return Target{}, err
 		}
-		base := root
-		if spec.Compose.Inline == "" {
-			if base, err = insideRoot(root, filepath.Join(root, filepath.FromSlash(path.Dir(spec.Compose.Path)))); err != nil {
-				return Target{}, fmt.Errorf("compose file directory: %w", err)
-			}
-		}
-		projectDir, resolveBuild = base, hostBuildResolver(root, base)
-		// Rootless compose reads build contexts as its own user, so it gets a copy.
-		if eng.Rootless {
-			staged, cleanupStaged, err := stageForRootless(ctx, eng, root)
-			if err != nil {
-				return Target{}, err
-			}
-			defer cleanupStaged()
-			projectDir, resolveBuild = rebasePath(root, staged, base), rebaseResolver(root, staged, resolveBuild)
-		}
-	}
-	if spec.Compose.Inline != "" {
-		src = []byte(spec.Compose.Inline)
-	} else {
-		if src, err = readHostCompose(spec.Compose.HostDir, spec.Compose.Path); err != nil {
-			return Target{}, err
-		}
+		defer cleanupStaged()
+		projectDir, resolveBuild = rebasePath(root, staged, projectDir), rebaseResolver(root, staged, resolveBuild)
 	}
 
 	envPath := filepath.Join(work, "app.env")

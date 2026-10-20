@@ -14,6 +14,7 @@ import (
 	"time"
 
 	agentv1 "github.com/ownship/agent/internal/gen/ownship/agent/v1"
+	"github.com/ownship/agent/internal/hostproxy"
 )
 
 // Waker proxies wake-on-request projects and boots them on the first request while asleep.
@@ -79,19 +80,16 @@ func (w *Waker) Register(workload string, hostnames []string, target string, hea
 		}
 	}
 	entry := &wakerEntry{
-		workload:  workload,
-		target:    parsed,
-		proxy:     httputil.NewSingleHostReverseProxy(parsed),
+		workload: workload,
+		target:   parsed,
+		// The LAN proxy may sit in front, so its forwarded headers pass through.
+		proxy:     hostproxy.Fixed(parsed, hostproxy.Options{KeepForwarded: true}),
 		hostnames: hostnames,
 		health:    health,
 	}
-	entry.proxy.ErrorHandler = func(rw http.ResponseWriter, _ *http.Request, _ error) {
-		rw.WriteHeader(http.StatusBadGateway)
-		_, _ = rw.Write([]byte("app unreachable"))
-	}
 	w.entries[workload] = entry
 	for _, h := range hostnames {
-		w.byHost[strings.ToLower(h)] = workload
+		w.byHost[hostproxy.NormalizeHost(h)] = workload
 	}
 	return w.ensureListener()
 }
@@ -136,17 +134,13 @@ func (w *Waker) ensureListener() error {
 	if err != nil {
 		return fmt.Errorf("waker listen :%d: %w", w.port, err)
 	}
-	server := &http.Server{Handler: w, ReadHeaderTimeout: 10 * time.Second}
-	go func() { _ = server.Serve(ln) }()
+	hostproxy.Serve(ln, w)
 	w.started = true
 	return nil
 }
 
 func (w *Waker) ServeHTTP(rw http.ResponseWriter, r *http.Request) {
-	host := strings.ToLower(r.Host)
-	if i := strings.LastIndex(host, ":"); i > 0 && !strings.Contains(host[i:], "]") {
-		host = host[:i]
-	}
+	host := hostproxy.NormalizeHost(r.Host)
 	w.mu.Lock()
 	entry := w.entries[w.byHost[host]]
 	w.mu.Unlock()
