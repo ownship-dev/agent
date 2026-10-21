@@ -67,7 +67,7 @@ func TestGitSyncReclonesWhenTheUpdateFailsOrCacheIsOff(t *testing.T) {
 }
 
 func TestLXCGitRunsInsideTheContainer(t *testing.T) {
-	cmd := lxcGit{vmid: "105"}.git(context.Background(), []string{"-C", "/root/app", "clean", "-fd"}, nil)
+	cmd := lxcGit{ref: guestRef{lxcGuest{}, "105"}}.git(context.Background(), []string{"-C", "/root/app", "clean", "-fd"}, nil)
 	if got := strings.Join(cmd.Args, " "); got != "pct exec 105 -- git -C /root/app clean -fd" {
 		t.Fatalf("argv %q", got)
 	}

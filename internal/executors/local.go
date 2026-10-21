@@ -83,6 +83,9 @@ func ensureLinkNetwork(ctx context.Context, eng *Engine) {
 }
 
 func (o *LocalDocker) Run(ctx context.Context, spec RunSpec) (Target, error) {
+	if spec.GuestKind == GuestVM {
+		return Target{}, errVMNeedsProxmox
+	}
 	defer o.runLocks.lock(spec.WorkloadID)()
 	eng, ok := o.state.Engine(spec.Engine)
 	if !ok {

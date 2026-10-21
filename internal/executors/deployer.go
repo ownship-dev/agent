@@ -126,6 +126,10 @@ func (d *Deployer) Deploy(ctx context.Context, cmd *agentv1.Deploy, emit Emit) e
 	logLine := func(stream agentv1.LogStream, text string) {
 		_ = emit(logChunk(id, seq.Add(1), stream, text))
 	}
+	// Refuse before a host build, which would only be thrown away.
+	if normalizeGuestKind(cmd.GetGuestKind()) == GuestVM && d.orch.HostBuilds() {
+		return errVMNeedsProxmox
+	}
 
 	if err := d.authenticateRegistry(ctx, cmd, logLine); err != nil {
 		return err
@@ -219,6 +223,7 @@ func (d *Deployer) Deploy(ctx context.Context, cmd *agentv1.Deploy, emit Emit) e
 					Ip:          hostFromURL(target.URL),
 					ImageDigest: image,
 				},
+				GuestKind: target.GuestKind,
 			},
 		},
 	})
@@ -333,6 +338,8 @@ func (d *Deployer) buildRunSpec(cmd *agentv1.Deploy, wl, image string, env []*ag
 		IsManagedService: cmd.GetServiceId() != "",
 		LxcPassword:      cmd.GetLxcPassword(),
 		Engine:           normalizeKind(cmd.GetContainerEngine()),
+		GuestKind:        normalizeGuestKind(cmd.GetGuestKind()),
+		VmImage:          cmd.GetVmImage(),
 	}
 	// On Proxmox, Run clones and builds inside the LXC.
 	if repoBuild && !d.orch.HostBuilds() {
@@ -722,6 +729,22 @@ func (d *Deployer) Bridges(ctx context.Context) []string {
 		return cd.Bridges(ctx)
 	}
 	return nil
+}
+
+// UninstallCleanup removes what the orchestrator keeps beyond its workloads.
+func (d *Deployer) UninstallCleanup(ctx context.Context) error {
+	if p, ok := d.orch.(*ProxmoxLXC); ok {
+		return p.UninstallCleanup(ctx)
+	}
+	return nil
+}
+
+// VMs is empty on a Docker host, which never runs VMs.
+func (d *Deployer) VMs(ctx context.Context) VMReport {
+	if p, ok := d.orch.(*ProxmoxLXC); ok {
+		return p.VMReport(ctx)
+	}
+	return VMReport{}
 }
 
 func (d *Deployer) InvalidateCaches() {

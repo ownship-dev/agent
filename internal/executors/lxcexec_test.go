@@ -9,14 +9,21 @@ import (
 
 func proxmoxWithLXC(t *testing.T, workload, vmid string) *ProxmoxLXC {
 	t.Helper()
-	state, err := loadLxcState(filepath.Join(t.TempDir(), "lxc.json"))
+	dir := t.TempDir()
+	state, err := loadLxcState(filepath.Join(dir, "lxc.json"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	if err := state.set(workload, vmid); err != nil {
 		t.Fatal(err)
 	}
-	return &ProxmoxLXC{cfg: ProxmoxConfig{}, state: state, createLocks: newKeyedLocks()}
+	vms, err := loadVMState(filepath.Join(dir, "vm.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	o := &ProxmoxLXC{cfg: ProxmoxConfig{}, state: state, vms: vms, createLocks: newKeyedLocks(), baseLocks: newKeyedLocks()}
+	o.vm = newVMGuest(o)
+	return o
 }
 
 // The two targets must land on different layers: app descends into the container,

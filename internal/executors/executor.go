@@ -43,7 +43,17 @@ type Executor interface {
 	Nodes(ctx context.Context) []*agentv1.NodeInfo
 	Templates(ctx context.Context) []string
 	Bridges(ctx context.Context) []string
+	VMs(ctx context.Context) VMReport
 	InvalidateCaches()
+}
+
+// VMReport is what Hello says about VM guests; the zero value is a host that can't run them.
+type VMReport struct {
+	Capable bool
+	// Convert is a host that can move workloads between an LXC and a VM.
+	Convert       bool
+	BlockedReason string
+	Images        []*agentv1.VmImage
 }
 
 // CodedError carries a failure code (e.g. HEALTHCHECK_FAILED) the control plane acts on.

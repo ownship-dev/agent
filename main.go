@@ -231,6 +231,7 @@ func buildOrchestrator(cfg config.Config) (executors.Orchestrator, error) {
 			Storage:         cfg.ProxmoxStorage,
 			Bridge:          cfg.ProxmoxBridge,
 			RootfsGB:        cfg.ProxmoxRootfsGB,
+			VMImageDir:      cfg.VMImageDir,
 		})
 	case "local":
 		// Engines still starting are re-detected on use; meanwhile the inventory is incomplete.

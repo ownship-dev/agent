@@ -23,8 +23,8 @@ func TestEngineArgv(t *testing.T) {
 	}{
 		{"docker", NewDockerEngine(), []string{"docker", "ps"}},
 		{"podman", NewPodmanEngine(), []string{"podman", "ps"}},
-		{"docker in lxc", NewDockerEngine().InLXC("105"), []string{"pct", "exec", "105", "--", "docker", "ps"}},
-		{"podman in lxc", NewPodmanEngine().InLXC("105"), []string{"pct", "exec", "105", "--", "podman", "ps"}},
+		{"docker in lxc", NewDockerEngine().InGuest(lxcPrefix("105")), []string{"pct", "exec", "105", "--", "docker", "ps"}},
+		{"podman in lxc", NewPodmanEngine().InGuest(lxcPrefix("105")), []string{"pct", "exec", "105", "--", "podman", "ps"}},
 	}
 	for _, c := range cases {
 		if got := c.e.Argv("ps"); !slices.Equal(got, c.want) {
@@ -35,7 +35,7 @@ func TestEngineArgv(t *testing.T) {
 
 func TestInLXCDoesNotMutateTheHostEngine(t *testing.T) {
 	host := NewPodmanEngine()
-	_ = host.InLXC("105")
+	_ = host.InGuest(lxcPrefix("105"))
 	if got := host.Argv("ps"); !slices.Equal(got, []string{"podman", "ps"}) {
 		t.Fatalf("host engine changed: %v", got)
 	}
@@ -74,7 +74,7 @@ func TestComposeCmdPerEngine(t *testing.T) {
 	if !slices.Contains(r.Env, "DOCKER_HOST=unix:///run/user/990/podman/podman.sock") || r.SysProcAttr == nil {
 		t.Fatalf("rootless compose: %v", r.Args)
 	}
-	l := NewPodmanEngine().InLXC("105").ComposeCmd(ctx, "version")
+	l := NewPodmanEngine().InGuest(lxcPrefix("105")).ComposeCmd(ctx, "version")
 	want := []string{"pct", "exec", "105", "--", "env", "DOCKER_HOST=unix:///run/podman/podman.sock", "docker-compose", "version"}
 	if !slices.Equal(l.Args, want) {
 		t.Fatalf("podman compose in lxc: %v", l.Args)
@@ -160,4 +160,9 @@ func TestRootlessEngineKeepsSupplementaryGroups(t *testing.T) {
 	if len(gids) > 0 && len(e.cred.Groups) == 0 {
 		t.Fatal("supplementary groups dropped")
 	}
+}
+
+func lxcPrefix(vmid string) GuestPrefix {
+	p, _ := lxcGuest{}.ExecPrefix(context.Background(), vmid, false)
+	return p
 }

@@ -1,0 +1,139 @@
+package executors
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"os"
+	"os/exec"
+	"runtime"
+	"time"
+
+	agentv1 "github.com/ownship/agent/internal/gen/ownship/agent/v1"
+)
+
+// VMs rely on qm's cloud-init and guest-agent handling as shipped from Proxmox VE 8.0.
+const minVMMajor = 8
+
+var errVMNeedsProxmox = errors.New("VMs need a Proxmox host; this machine runs plain Docker")
+
+var (
+	vmLookPath      = exec.LookPath
+	vmKVMDevice     = "/dev/kvm"
+	vmHostArch      = runtime.GOARCH
+	vmImageStorages = func(ctx context.Context, node string) ([]byte, error) {
+		return exec.CommandContext(ctx, "pvesh", "get", "/nodes/"+node+"/storage",
+			"--content", "images", "--output-format", "json").Output()
+	}
+)
+
+func (o *ProxmoxLXC) vmImageDir() string {
+	if o.cfg.VMImageDir != "" {
+		return o.cfg.VMImageDir
+	}
+	return DefaultVMImageDir
+}
+
+// vmCapability reports every image candidate and, when VMs can't run here, one sentence saying
+// why ("" means capable).
+func (o *ProxmoxLXC) vmCapability(ctx context.Context) ([]*agentv1.VmImage, string) {
+	images, dirErr := scanVMImages(ctx, o.vmImageDir())
+	infos := make([]*agentv1.VmImage, 0, len(images))
+	usable := 0
+	for _, img := range images {
+		infos = append(infos, img.Info)
+		if img.Info.GetUsable() {
+			usable++
+		}
+	}
+	if reason := o.vmHostBlockedReason(ctx); reason != "" {
+		return infos, reason
+	}
+	switch {
+	case dirErr != nil:
+		return infos, fmt.Sprintf("The VM image directory can't be used: %v.", dirErr)
+	case usable == 0:
+		return infos, fmt.Sprintf("No usable VM image in %s; copy a cloud image there.", o.vmImageDir())
+	}
+	return infos, ""
+}
+
+// VMReport is read fresh on every Hello; image hashes are cached by size and mtime.
+func (o *ProxmoxLXC) VMReport(ctx context.Context) VMReport {
+	images, reason := o.vmCapability(ctx)
+	return VMReport{Capable: reason == "", Convert: true, BlockedReason: reason, Images: images}
+}
+
+// vmHostBlockedReason checks the host alone; images only matter when a VM is created.
+func (o *ProxmoxLXC) vmHostBlockedReason(ctx context.Context) string {
+	if vmHostArch != "amd64" {
+		return "VMs need an x86_64 host."
+	}
+	v := o.PveVersion(ctx)
+	if _, major, _, ok := parsePveVersion("pve-manager/" + v); !ok || major < minVMMajor {
+		if v == "" {
+			v = "an unknown version"
+		}
+		return fmt.Sprintf("VMs need Proxmox VE %d.0 or newer; this host runs %s.", minVMMajor, v)
+	}
+	for _, bin := range []string{"qm", "ssh", "qemu-img"} {
+		if _, err := vmLookPath(bin); err != nil {
+			return bin + " is not installed on the host."
+		}
+	}
+	if _, err := os.Stat(vmKVMDevice); err != nil {
+		return "KVM is not available (no /dev/kvm); enable virtualization in the firmware."
+	}
+	out, err := vmImageStorages(ctx, o.localNodeName(ctx))
+	if err != nil {
+		return "Could not list the Proxmox storages: " + execErrDetail(err) + "."
+	}
+	var storages []struct {
+		Storage string `json:"storage"`
+	}
+	if json.Unmarshal(out, &storages) != nil {
+		return "Could not read the Proxmox storage list."
+	}
+	for _, s := range storages {
+		if s.Storage == o.cfg.Storage {
+			return ""
+		}
+	}
+	return fmt.Sprintf("The storage %q does not accept VM disks; set PROXMOX_STORAGE to one that does.", o.cfg.Storage)
+}
+
+// vmMinMemoryMB matches VM_MIN_MEMORY_MB in @ownship/core; less can't boot a cloud image with Docker.
+const vmMinMemoryMB, vmDefaultMemoryMB = 768, 1024
+
+// WakeHold gives a sleeping VM the time a cold boot takes.
+func (o *ProxmoxLXC) WakeHold(workload string) time.Duration {
+	if ref, ok := o.guestFor(workload); ok && ref.g.Kind() == GuestVM {
+		return wakeHoldVM
+	}
+	return wakeHoldMax
+}
+
+// UninstallCleanup runs once every workload is destroyed: it removes the templates this agent
+// imported and its VM credentials. Image files belong to the owner and stay.
+func (o *ProxmoxLXC) UninstallCleanup(ctx context.Context) error {
+	if o.vms == nil {
+		return nil
+	}
+	if bases := o.vms.bases(); len(bases) > 0 {
+		all, err := clusterGuests(ctx)
+		if err != nil {
+			return fmt.Errorf("list guests before removing VM templates: %w", err)
+		}
+		for id, b := range bases {
+			o.destroyBase(ctx, all, b.Vmid, func(agentv1.LogStream, string) {})
+			_ = o.vms.removeBase(id)
+		}
+	}
+	if o.vm != nil {
+		_ = os.Remove(o.vm.paths.Key)
+		_ = os.Remove(o.vm.paths.KnownHosts)
+		_ = os.RemoveAll(o.vm.paths.ControlDir)
+	}
+	return nil
+}

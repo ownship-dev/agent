@@ -61,11 +61,11 @@ func (o *ProxmoxLXC) Resume(ctx context.Context) {
 
 func (o *ProxmoxLXC) resumeRound(ctx context.Context) {
 	for _, id := range o.engines.Asleep() {
-		vmid, ok := o.state.get(id)
+		ref, ok := o.guestFor(id)
 		if !ok {
 			continue
 		}
-		if eng := o.lxcEngine(ctx, id, vmid); eng.Kind != KindDocker {
+		if eng := o.guestEngine(ctx, id, ref); eng.Kind != KindDocker {
 			_, _ = runEngineCmd(eng.Cmd(ctx, "stop", lxcAppContainer))
 		}
 	}

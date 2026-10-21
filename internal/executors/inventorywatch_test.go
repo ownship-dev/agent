@@ -30,7 +30,7 @@ func TestWorkloadRemovedEvent(t *testing.T) {
 	}
 }
 
-func TestWatchVMListFiresOnlyWhenAnLXCDisappears(t *testing.T) {
+func TestWatchVMListFiresOnlyWhenAGuestDisappears(t *testing.T) {
 	dir := t.TempDir()
 	oldPath, oldInterval := vmlistPath, vmlistPollInterval
 	vmlistPath, vmlistPollInterval = filepath.Join(dir, ".vmlist"), 10*time.Millisecond
@@ -50,14 +50,19 @@ func TestWatchVMListFiresOnlyWhenAnLXCDisappears(t *testing.T) {
 
 	settle := func() { time.Sleep(60 * time.Millisecond) }
 	settle()
-	write(`{"version":2,"ids":{"100":{"node":"pve","type":"lxc","version":2},"101":{"node":"pve","type":"lxc","version":1}}}`)
+	write(`{"version":2,"ids":{"100":{"node":"pve","type":"lxc","version":2},"101":{"node":"pve","type":"lxc","version":1},"200":{"node":"pve","type":"qemu","version":1}}}`)
 	settle()
 	if n := fired.Load(); n != 0 {
-		t.Fatalf("an added LXC or a removed VM fired %d times", n)
+		t.Fatalf("an added LXC fired %d times", n)
 	}
-	write(`{"version":3,"ids":{"101":{"node":"pve","type":"lxc","version":1}}}`)
+	write(`{"version":3,"ids":{"101":{"node":"pve","type":"lxc","version":1},"200":{"node":"pve","type":"qemu","version":1}}}`)
 	settle()
 	if n := fired.Load(); n != 1 {
 		t.Fatalf("a removed LXC fired %d times, want 1", n)
+	}
+	write(`{"version":4,"ids":{"101":{"node":"pve","type":"lxc","version":1}}}`)
+	settle()
+	if n := fired.Load(); n != 2 {
+		t.Fatalf("a removed VM fired %d times, want 2", n-1)
 	}
 }

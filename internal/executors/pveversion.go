@@ -43,9 +43,13 @@ func gpuPassthroughRefusal(version string) error {
 		minGPUPassthroughMajor, minGPUPassthroughMinor, version)
 }
 
+var pveVersionOutput = func(ctx context.Context) ([]byte, error) {
+	return exec.CommandContext(ctx, "pveversion").Output()
+}
+
 // PveVersion is read on every call, so an upgrade shows up on the next report.
 func (o *ProxmoxLXC) PveVersion(ctx context.Context) string {
-	out, err := exec.CommandContext(ctx, "pveversion").Output()
+	out, err := pveVersionOutput(ctx)
 	if err != nil {
 		return ""
 	}

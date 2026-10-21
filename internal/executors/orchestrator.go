@@ -17,6 +17,8 @@ type Target struct {
 	URL         string
 	ContainerID string
 	LxcID       string
+	// GuestKind is what the Proxmox workload runs in; UNSPECIFIED on a Docker host.
+	GuestKind GuestKind
 }
 
 // RunSpec is everything needed to run one workload: a built Image, or Repo/Build for
@@ -60,6 +62,9 @@ type RunSpec struct {
 	Compose *ComposeRun
 	// UNSPECIFIED means docker.
 	Engine EngineKind
+	// UNSPECIFIED means an LXC; a VM boots from VmImage, an image id in VM_IMAGE_DIR.
+	GuestKind GuestKind
+	VmImage   string
 }
 
 // Orchestrator runs workloads: LocalDocker on the agent host, ProxmoxLXC in one LXC each.

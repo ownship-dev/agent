@@ -24,9 +24,18 @@ type clusterGuest struct {
 	Tags string `json:"tags"`
 }
 
-// clusterLXCs maps each LXC vmid to whether it carries the ownship tag. VMs are excluded:
-// a vmid reused by one isn't the container this agent created.
-func clusterLXCs(ctx context.Context) (map[string]bool, error) {
+// guestInfo is a cluster guest as the reconcile logic needs it: its type and whether it is
+// one of this agent's workloads.
+type guestInfo struct {
+	Type   string // "lxc" or "qemu"
+	Tagged bool
+	// A VM template this agent imported from a local image.
+	Base bool
+}
+
+// clusterGuests maps every vmid to its type and ownship tag. A tracked workload only counts
+// as present when its vmid still has the type it was recorded as.
+func clusterGuests(ctx context.Context) (map[string]guestInfo, error) {
 	out, err := clusterGuestsJSON(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("list cluster guests: %w", err)
@@ -35,38 +44,49 @@ func clusterLXCs(ctx context.Context) (map[string]bool, error) {
 	if err := json.Unmarshal(out, &guests); err != nil {
 		return nil, fmt.Errorf("parse cluster guests: %w", err)
 	}
-	lxcs := make(map[string]bool, len(guests))
+	all := make(map[string]guestInfo, len(guests))
 	for _, g := range guests {
-		if g.Type == "lxc" {
-			lxcs[strconv.Itoa(g.VMID)] = hasOwnshipTag(g.Tags)
+		if g.Type == "lxc" || g.Type == "qemu" {
+			all[strconv.Itoa(g.VMID)] = guestInfo{Type: g.Type, Tagged: hasOwnshipTag(g.Tags), Base: hasTag(g.Tags, ownshipBaseTag)}
 		}
 	}
-	return lxcs, nil
+	return all, nil
 }
 
-func existingLXCs(ctx context.Context) (map[string]bool, error) {
-	lxcs, err := clusterLXCs(ctx)
-	if err != nil {
-		return nil, err
+// pveType is the name /cluster/resources uses for a guest kind.
+func pveType(k GuestKind) string {
+	if k == GuestVM {
+		return "qemu"
 	}
-	for vmid := range lxcs {
-		lxcs[vmid] = true
-	}
-	return lxcs, nil
+	return "lxc"
 }
+
+func (i guestInfo) is(k GuestKind) bool { return i.Type == pveType(k) }
+
+// Imported VM templates carry their own tag, so a template never reads as a lost workload.
+const ownshipBaseTag = "ownship-base"
+
+func hasOwnshipTag(tags string) bool { return hasTag(tags, ownshipTag) }
 
 // Proxmox joins tags with ';' (',' and spaces are accepted on input).
-func hasOwnshipTag(tags string) bool {
+func hasTag(tags, want string) bool {
 	for _, t := range strings.FieldsFunc(tags, func(r rune) bool { return r == ';' || r == ',' || r == ' ' }) {
-		if t == ownshipTag {
+		if t == want {
 			return true
 		}
 	}
 	return false
 }
 
-// lxcGone is true only when vmid provably no longer exists; any doubt is "not gone".
-func lxcGone(ctx context.Context, vmid string) bool {
-	lxcs, err := existingLXCs(ctx)
-	return err == nil && !lxcs[vmid]
+// guestGone is true only when vmid provably no longer exists as kind; a vmid recycled by the
+// other type is gone too. Any doubt is "not gone".
+func guestGone(ctx context.Context, kind GuestKind, vmid string) bool {
+	all, err := clusterGuests(ctx)
+	if err != nil {
+		return false
+	}
+	g, ok := all[vmid]
+	return !ok || !g.is(kind)
 }
+
+func lxcGone(ctx context.Context, vmid string) bool { return guestGone(ctx, GuestLXC, vmid) }

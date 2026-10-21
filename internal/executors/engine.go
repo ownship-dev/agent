@@ -27,10 +27,12 @@ const RootlessUser = "ownship-podman"
 
 // Engine is the only place that names a container CLI.
 type Engine struct {
-	Kind       EngineKind
-	Bin        string
-	Rootless   bool
-	prefix     []string
+	Kind     EngineKind
+	Bin      string
+	Rootless bool
+	prefix   []string
+	// Shell-quote every word after prefix (an SSH prefix, whose words a remote shell re-parses).
+	quote      bool
 	cred       *syscall.Credential
 	home       string
 	runtimeDir string
@@ -85,19 +87,24 @@ func (e *Engine) Name() string {
 	return e.Bin
 }
 
-// InLXC returns a copy that runs inside an LXC via pct exec.
-func (e *Engine) InLXC(vmid string) *Engine {
+// InGuest returns a copy that runs inside a Proxmox guest through its exec prefix.
+func (e *Engine) InGuest(p GuestPrefix) *Engine {
 	c := *e
-	c.prefix = []string{"pct", "exec", vmid, "--"}
+	c.prefix = append([]string{}, p.Argv...)
+	c.quote = p.Quote
 	return &c
+}
+
+// placed puts words after the prefix, quoted when the prefix needs it.
+func (e *Engine) placed(words ...string) []string {
+	return GuestPrefix{Argv: e.prefix, Quote: e.quote}.Wrap(words...)
 }
 
 func (e *Engine) Argv(args ...string) []string {
 	if e.unavailable != "" {
 		return failArgv(e.unavailable)
 	}
-	out := append(append([]string{}, e.prefix...), e.Bin)
-	return append(out, args...)
+	return e.placed(append([]string{e.Bin}, args...)...)
 }
 
 // ExecArgv is for callers that run argv themselves as root, so rootless includes the user switch.
@@ -105,9 +112,8 @@ func (e *Engine) ExecArgv(args ...string) []string {
 	if !e.Rootless || e.unavailable != "" {
 		return e.Argv(args...)
 	}
-	out := append(append([]string{}, e.prefix...), "runuser", "-u", RootlessUser, "--",
-		"env", "HOME="+e.home, "XDG_RUNTIME_DIR="+e.runtimeDir, e.Bin)
-	return append(out, args...)
+	return e.placed(append([]string{"runuser", "-u", RootlessUser, "--",
+		"env", "HOME=" + e.home, "XDG_RUNTIME_DIR=" + e.runtimeDir, e.Bin}, args...)...)
 }
 
 func (e *Engine) env(extra ...string) []string {
@@ -136,7 +142,7 @@ func (e *Engine) Cmd(ctx context.Context, args ...string) *exec.Cmd {
 
 // Raw runs another program with this engine's user and placement.
 func (e *Engine) Raw(ctx context.Context, argv ...string) *exec.Cmd {
-	return e.command(ctx, append(append([]string{}, e.prefix...), argv...))
+	return e.command(ctx, e.placed(argv...))
 }
 
 func (e *Engine) SocketPath() string {
@@ -155,12 +161,11 @@ func (e *Engine) SocketPath() string {
 func (e *Engine) ComposeCmd(ctx context.Context, args ...string) *exec.Cmd {
 	s := e.SocketPath()
 	if s == "" {
-		return e.command(ctx, append(append(append([]string{}, e.prefix...), "docker", "compose"), args...))
+		return e.command(ctx, e.placed(append([]string{"docker", "compose"}, args...)...))
 	}
 	if len(e.prefix) > 0 {
-		// Inside an LXC the variable must cross pct exec, so it goes on argv.
-		argv := append(append([]string{}, e.prefix...), "env", "DOCKER_HOST=unix://"+s, composeBinary)
-		return e.command(ctx, append(argv, args...))
+		// Inside a guest the variable must cross the exec prefix, so it goes on argv.
+		return e.command(ctx, e.placed(append([]string{"env", "DOCKER_HOST=unix://" + s, composeBinary}, args...)...))
 	}
 	return e.command(ctx, append([]string{composeBinary}, args...), "DOCKER_HOST=unix://"+s)
 }

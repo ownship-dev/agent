@@ -24,6 +24,8 @@ const (
 	defaultWakerPort = 18719
 	wakeHoldFast     = 5 * time.Second  // browsers get the interstitial past this
 	wakeHoldMax      = 90 * time.Second // then 504
+	// A VM boots a kernel and waits for its guest agent and SSH before the app can start.
+	wakeHoldVM = 180 * time.Second
 )
 
 type wakerEntry struct {
@@ -180,7 +182,7 @@ func (w *Waker) ServeHTTP(rw http.ResponseWriter, r *http.Request) {
 <p style="color:#8b8b93;font-size:.85rem">This page refreshes automatically.</p></div>`))
 			return
 		}
-		slow := time.NewTimer(wakeHoldMax)
+		slow := time.NewTimer(w.holdFor(entry.workload))
 		defer slow.Stop()
 		select {
 		case <-waking:
@@ -200,10 +202,22 @@ func (w *Waker) ServeHTTP(rw http.ResponseWriter, r *http.Request) {
 	entry.proxy.ServeHTTP(rw, r)
 }
 
+// slowBooter is an orchestrator whose workloads may need longer than wakeHoldMax to start.
+type slowBooter interface {
+	WakeHold(workload string) time.Duration
+}
+
+func (w *Waker) holdFor(workload string) time.Duration {
+	if b, ok := w.orch.(slowBooter); ok {
+		return max(b.WakeHold(workload), wakeHoldMax)
+	}
+	return wakeHoldMax
+}
+
 // wake starts the workload, waits for health and reports upstream, like a Wake command.
 // Start and the health gate get separate budgets so a slow start can't fail the check.
 func (w *Waker) wake(entry *wakerEntry) {
-	startCtx, startCancel := context.WithTimeout(context.Background(), wakeHoldMax)
+	startCtx, startCancel := context.WithTimeout(context.Background(), w.holdFor(entry.workload))
 	err := w.orch.Start(startCtx, entry.workload)
 	startCancel()
 

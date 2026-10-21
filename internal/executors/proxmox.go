@@ -8,6 +8,7 @@ import (
 	"net"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"regexp"
 	"sort"
 	"strconv"
@@ -23,6 +24,10 @@ import (
 // ProxmoxConfig configures the LXC orchestrator, which runs on the Proxmox host via pct/pvesh.
 type ProxmoxConfig struct {
 	StatePath string
+	// VM workloads, base templates and retired guests; defaults to vm-state.json beside StatePath.
+	VMStatePath string
+	// Where the owner puts VM cloud images; empty means DefaultVMImageDir.
+	VMImageDir string
 	// Engine inside each workload's LXC (docker or podman).
 	EngineStatePath string
 	// pct create defaults, overridable via env.
@@ -35,6 +40,8 @@ type ProxmoxConfig struct {
 type ProxmoxLXC struct {
 	cfg     ProxmoxConfig
 	state   *lxcState
+	vms     *vmState
+	vm      *vmGuest
 	engines *engineState
 
 	// hello() calls Nodes() three times in a burst; a short TTL makes that one subprocess.
@@ -55,6 +62,8 @@ type ProxmoxLXC struct {
 
 	// Serializes creates per workload: nextVmid() reports a free id without reserving it.
 	createLocks *keyedLocks
+	// Serializes template imports per image id.
+	baseLocks *keyedLocks
 
 	// Serializes nextVmid() through pct create/clone across all workloads, so two projects
 	// deploying at once can't claim the same vmid.
@@ -97,7 +106,15 @@ func NewProxmoxLXC(cfg ProxmoxConfig) (*ProxmoxLXC, error) {
 	if err != nil {
 		return nil, fmt.Errorf("load lxc state: %w", err)
 	}
-	o := &ProxmoxLXC{cfg: cfg, state: state, createLocks: newKeyedLocks()}
+	if cfg.VMStatePath == "" {
+		cfg.VMStatePath = filepath.Join(filepath.Dir(cfg.StatePath), "vm-state.json")
+	}
+	vms, err := loadVMState(cfg.VMStatePath)
+	if err != nil {
+		return nil, fmt.Errorf("load vm state: %w", err)
+	}
+	o := &ProxmoxLXC{cfg: cfg, state: state, vms: vms, createLocks: newKeyedLocks(), baseLocks: newKeyedLocks()}
+	o.vm = newVMGuest(o)
 	o.engines = loadEngineState(cfg.EngineStatePath, proxmoxEngines(), o.probeEngine)
 	return o, nil
 }
@@ -111,15 +128,80 @@ func (o *ProxmoxLXC) Engines(context.Context) []*agentv1.EngineInfo {
 func proxmoxEngines() []*Engine { return []*Engine{NewDockerEngine(), NewPodmanEngine()} }
 
 func (o *ProxmoxLXC) probeEngine(ctx context.Context, e *Engine, workloadID string) bool {
-	vmid, ok := o.state.get(workloadID)
-	return ok && e.InLXC(vmid).Cmd(ctx, "container", "inspect", "--", lxcAppContainer).Run() == nil
+	ref, ok := o.guestFor(workloadID)
+	return ok && ref.engine(ctx, e).Cmd(ctx, "container", "inspect", "--", lxcAppContainer).Run() == nil
 }
 
-func (o *ProxmoxLXC) lxcEngine(ctx context.Context, workloadID, vmid string) *Engine {
+func (o *ProxmoxLXC) guestEngine(ctx context.Context, workloadID string, ref guestRef) *Engine {
+	return ref.engine(ctx, o.workloadEngine(ctx, workloadID))
+}
+
+func (o *ProxmoxLXC) workloadEngine(ctx context.Context, workloadID string) *Engine {
 	if o.engines == nil {
-		return NewDockerEngine().InLXC(vmid)
+		return NewDockerEngine()
 	}
-	return o.engines.For(ctx, workloadID).InLXC(vmid)
+	return o.engines.For(ctx, workloadID)
+}
+
+// guestFor resolves a workload to its tracked guest. A workload in both state files is
+// ambiguous, so it resolves to nothing rather than to either guest.
+func (o *ProxmoxLXC) guestFor(workloadID string) (guestRef, bool) {
+	vmid, inLXC := o.state.get(workloadID)
+	w, inVM := o.vmWorkload(workloadID)
+	switch {
+	case inLXC && inVM:
+		return guestRef{}, false
+	case inVM:
+		return guestRef{o.guestOf(GuestVM), w.Vmid}, true
+	case inLXC:
+		return guestRef{lxcGuest{}, vmid}, true
+	}
+	return guestRef{}, false
+}
+
+func (o *ProxmoxLXC) vmWorkload(workloadID string) (vmWorkload, bool) {
+	if o.vms == nil {
+		return vmWorkload{}, false
+	}
+	return o.vms.get(workloadID)
+}
+
+// guestConflict refuses a workload both state files claim; only a person can say which is real.
+func (o *ProxmoxLXC) guestConflict(workloadID string) error {
+	_, inLXC := o.state.get(workloadID)
+	if _, inVM := o.vmWorkload(workloadID); inLXC && inVM {
+		return fmt.Errorf("workload %s is tracked as both an LXC and a VM; remove the wrong entry from the agent state", workloadID)
+	}
+	return nil
+}
+
+// guestOf is the strategy for a kind.
+func (o *ProxmoxLXC) guestOf(kind GuestKind) guest {
+	if kind == GuestVM && o.vm != nil {
+		return o.vm
+	}
+	if kind == GuestVM {
+		return newVMGuest(o)
+	}
+	return lxcGuest{}
+}
+
+// trackedGuests is every workload's guest; ambiguous ones are left out.
+func (o *ProxmoxLXC) trackedGuests() map[string]guestRef {
+	out := map[string]guestRef{}
+	for id := range o.state.snapshot() {
+		if ref, ok := o.guestFor(id); ok {
+			out[id] = ref
+		}
+	}
+	if o.vms != nil {
+		for id := range o.vms.snapshot() {
+			if ref, ok := o.guestFor(id); ok {
+				out[id] = ref
+			}
+		}
+	}
+	return out
 }
 
 func (o *ProxmoxLXC) HostBuilds() bool { return false }
@@ -134,6 +216,12 @@ func (o *ProxmoxLXC) Run(ctx context.Context, spec RunSpec) (Target, error) {
 		// Fail closed: an unknown engine must never silently fall back to Docker.
 		return Target{}, fmt.Errorf("container engine %v is not supported by this agent; update it", kind)
 	}
+	spec.GuestKind = normalizeGuestKind(spec.GuestKind)
+	if spec.GuestKind == GuestVM {
+		if err := o.vmRefusal(ctx, spec); err != nil {
+			return Target{}, err
+		}
+	}
 	target, err := o.run(ctx, kind, spec)
 	if err != nil {
 		return Target{}, err
@@ -143,58 +231,77 @@ func (o *ProxmoxLXC) Run(ctx context.Context, spec RunSpec) (Target, error) {
 	return target, nil
 }
 
+// vmRefusal turns away what a VM can't do before anything is created.
+func (o *ProxmoxLXC) vmRefusal(ctx context.Context, spec RunSpec) error {
+	switch {
+	case spec.BaseTemplate != "" || spec.TemplateVmid != "":
+		return errors.New("LXC templates don't apply to a VM; it boots from a VM image")
+	case spec.Resources.GetGpu():
+		return errors.New("GPU passthrough is not available for VMs yet")
+	case spec.Resources.GetMemoryMb() > 0 && spec.Resources.GetMemoryMb() < vmMinMemoryMB:
+		return fmt.Errorf("a VM needs at least %d MB of memory", vmMinMemoryMB)
+	}
+	if local := o.localNodeName(ctx); spec.TargetNode != "" && spec.TargetNode != local {
+		return fmt.Errorf("VMs are created on this agent's node (%s), not on %s", local, spec.TargetNode)
+	}
+	if reason := o.vmHostBlockedReason(ctx); reason != "" {
+		return errors.New(reason)
+	}
+	return nil
+}
+
 func (o *ProxmoxLXC) run(ctx context.Context, kind EngineKind, spec RunSpec) (Target, error) {
-	vmid, err := o.ensureLXC(ctx, spec.WorkloadID, spec.BaseTemplate, spec.TemplateVmid, spec.BaseOS, spec.Resources, spec.TargetNode, spec.Hostname, spec.Network, spec.LogLine)
+	ref, err := o.ensureGuest(ctx, spec)
 	if err != nil {
 		return Target{}, err
 	}
 
 	// Re-applied every deploy, since a reused LXC would otherwise keep the old password.
-	o.applyRootPassword(ctx, vmid, spec.LxcPassword, spec.LogLine)
+	o.applyRootPassword(ctx, ref, spec.LxcPassword, spec.LogLine)
 	// Same for GPU passthrough.
 	hostGPU := detectGPUs(ctx, "/")
-	if err := o.applyGPUPassthrough(ctx, vmid, spec.Resources.GetGpu(), hostGPU, spec.LogLine); err != nil {
+	if err := ref.g.ApplyGPU(ctx, o, ref.vmid, spec.Resources.GetGpu(), hostGPU, spec.LogLine); err != nil {
 		return Target{}, err
 	}
 
 	// Golden templates usually ship Docker; base-OS builds install it.
-	eng := o.engines.byKind(kind).InLXC(vmid)
-	if err := o.ensureEngine(ctx, eng, vmid, spec.LogLine); err != nil {
+	eng := ref.engine(ctx, o.engines.byKind(kind))
+	if err := o.ensureEngine(ctx, eng, ref, spec.LogLine); err != nil {
 		return Target{}, err
 	}
-	// Volumes are LXC dirs both engines bind, so a switch only retires the old engine's containers.
+	// Volumes are guest dirs both engines bind, so a switch only retires the old engine's containers.
 	if rec, ok := o.engines.Recorded(spec.WorkloadID); ok && normalizeKind(rec) != kind {
-		old := o.engines.byKind(rec).InLXC(vmid)
+		old := ref.engine(ctx, o.engines.byKind(rec))
 		_ = old.Raw(ctx, "sh", "-c", lxcRunPrepScript(old)).Run()
-		spec.LogLine(agentv1.LogStream_LOG_STREAM_SYSTEM, "moved from "+old.Name()+" to "+eng.Name()+" inside LXC "+vmid)
+		spec.LogLine(agentv1.LogStream_LOG_STREAM_SYSTEM, "moved from "+old.Name()+" to "+eng.Name()+" inside "+ref.label())
 	}
 
 	// Short-lived registry credentials for the build and the pull, removed afterwards.
 	if spec.RegistryAuth != nil {
-		_ = pct(ctx, "exec", vmid, "--", "mkdir", "-p", "-m", "0700", "/root/.docker").Run()
-		if err := o.writeEnvFile(ctx, vmid, "/root/.docker/config.json", dockerConfigJSON(spec.RegistryAuth)); err != nil {
+		_ = ref.cmd(ctx, "mkdir", "-p", "-m", "0700", "/root/.docker").Run()
+		if err := o.writeEnvFile(ctx, ref, "/root/.docker/config.json", dockerConfigJSON(spec.RegistryAuth)); err != nil {
 			return Target{}, fmt.Errorf("write registry auth: %w", err)
 		}
 		defer func() {
-			_ = pct(context.Background(), "exec", vmid, "--", "rm", "-f", "/root/.docker/config.json").Run()
+			_ = ref.cmd(context.Background(), "rm", "-f", "/root/.docker/config.json").Run()
 		}()
 		spec.LogLine(agentv1.LogStream_LOG_STREAM_SYSTEM_OK, "authenticated to registry "+spec.RegistryAuth.GetHost())
 	}
 
 	if spec.Compose != nil {
-		return o.runComposeInLXC(ctx, eng, vmid, spec, hostGPU)
+		return o.runComposeInLXC(ctx, eng, ref, spec, hostGPU)
 	}
 
 	// An image with no repo (managed DB, rollback) runs as-is.
 	if spec.Repo.GetCloneUrl() != "" {
-		if err := o.buildInLXC(ctx, eng, vmid, spec.Image, spec.Repo, spec.Build, spec.Cache, spec.LogLine); err != nil {
+		if err := o.buildInLXC(ctx, eng, ref, spec.Image, spec.Repo, spec.Build, spec.Cache, spec.LogLine); err != nil {
 			return Target{}, err
 		}
 	}
 
 	// 0600 env file inside the LXC keeps secrets off argv.
 	const envPath = "/run/ownship-app.env"
-	if err := o.writeEnvFile(ctx, vmid, envPath, envFileContent(spec.Env, spec.Port)); err != nil {
+	if err := o.writeEnvFile(ctx, ref, envPath, envFileContent(spec.Env, spec.Port)); err != nil {
 		return Target{}, err
 	}
 
@@ -250,8 +357,8 @@ func (o *ProxmoxLXC) run(ctx context.Context, kind EngineKind, spec RunSpec) (Ta
 			return Target{}, err
 		}
 		// mkdir -m only applies on creation, so older volumes need an explicit chmod.
-		_ = pct(ctx, "exec", vmid, "--", "mkdir", "-p", host).Run()
-		_ = pct(ctx, "exec", vmid, "--", "chmod", volMode, host).Run()
+		_ = ref.cmd(ctx, "mkdir", "-p", host).Run()
+		_ = ref.cmd(ctx, "chmod", volMode, host).Run()
 		run = append(run, "-v", host+":"+v.GetMountPath())
 	}
 	// -- stops an image ref starting with "-" being parsed as a flag.
@@ -267,8 +374,8 @@ func (o *ProxmoxLXC) run(ctx context.Context, kind EngineKind, spec RunSpec) (Ta
 		if err != nil {
 			return Target{}, err
 		}
-		_ = pct(ctx, "exec", vmid, "--", "mkdir", "-p", "-m", "0700", lxcCaddyfileDir).Run()
-		if err := o.writeEnvFile(ctx, vmid, lxcCaddyfilePath, caddyfile); err != nil {
+		_ = ref.cmd(ctx, "mkdir", "-p", "-m", "0700", lxcCaddyfileDir).Run()
+		if err := o.writeEnvFile(ctx, ref, lxcCaddyfilePath, caddyfile); err != nil {
 			return Target{}, fmt.Errorf("write auth proxy config: %w", err)
 		}
 		if out, err := eng.Cmd(ctx, "run", "-d",
@@ -281,29 +388,29 @@ func (o *ProxmoxLXC) run(ctx context.Context, kind EngineKind, spec RunSpec) (Ta
 		spec.LogLine(agentv1.LogStream_LOG_STREAM_SYSTEM, "basic auth proxy fronting the app")
 	}
 
-	ip, err := o.lxcIP(ctx, vmid)
+	ip, err := ref.g.IP(ctx, ref.vmid)
 	if err != nil {
 		return Target{}, err
 	}
 	// Detached ctx so pruning outlives the deploy.
 	go o.pruneImages(context.Background(), eng, spec.WorkloadID, 3)
-	spec.LogLine(agentv1.LogStream_LOG_STREAM_SYSTEM_OK, fmt.Sprintf("running in LXC %s at %s:%d", vmid, ip, spec.Port))
-	return Target{URL: fmt.Sprintf("http://%s:%d", ip, spec.Port), LxcID: vmid}, nil
+	spec.LogLine(agentv1.LogStream_LOG_STREAM_SYSTEM_OK, fmt.Sprintf("running in %s at %s:%d", ref.label(), ip, spec.Port))
+	return Target{URL: fmt.Sprintf("http://%s:%d", ip, spec.Port), LxcID: ref.vmid, GuestKind: ref.g.Kind()}, nil
 }
 
 // runComposeInLXC runs a sanitized compose project in the LXC, with named volumes on the
 // same dirs single-image apps use so backups keep working.
-func (o *ProxmoxLXC) runComposeInLXC(ctx context.Context, eng *Engine, vmid string, spec RunSpec, hostGPU gpuDevices) (Target, error) {
+func (o *ProxmoxLXC) runComposeInLXC(ctx context.Context, eng *Engine, ref guestRef, spec RunSpec, hostGPU gpuDevices) (Target, error) {
 	if spec.BasicAuth != nil {
 		return Target{}, errors.New("basic auth is not available for compose projects")
 	}
-	if err := o.ensureComposeInLXC(ctx, eng, vmid, spec.LogLine); err != nil {
+	if err := o.ensureComposeInLXC(ctx, eng, ref, spec.LogLine); err != nil {
 		return Target{}, err
 	}
 	const repoDir = "/root/app"
 	hasRepo := spec.Repo.GetCloneUrl() != ""
 	if hasRepo {
-		if err := gitSync(ctx, lxcGit{o, vmid}, spec.Repo, repoDir, spec.Cache, spec.LogLine); err != nil {
+		if err := gitSync(ctx, lxcGit{o, ref}, spec.Repo, repoDir, spec.Cache, spec.LogLine); err != nil {
 			return Target{}, err
 		}
 	}
@@ -313,7 +420,7 @@ func (o *ProxmoxLXC) runComposeInLXC(ctx context.Context, eng *Engine, vmid stri
 	if hasRepo {
 		root = repoDir
 	}
-	src, projectDir, resolveBuild, err := composeSource(lxcFS{ctx, vmid}, root, spec.Compose)
+	src, projectDir, resolveBuild, err := composeSource(lxcFS{ctx, ref}, root, spec.Compose)
 	if err != nil {
 		return Target{}, err
 	}
@@ -322,7 +429,7 @@ func (o *ProxmoxLXC) runComposeInLXC(ctx context.Context, eng *Engine, vmid stri
 	}
 
 	const envPath = "/run/ownship-app.env"
-	if err := o.writeEnvFile(ctx, vmid, envPath, envFileContent(spec.Env, spec.Port)); err != nil {
+	if err := o.writeEnvFile(ctx, ref, envPath, envFileContent(spec.Env, spec.Port)); err != nil {
 		return Target{}, err
 	}
 	gpu, err := composeGPU(spec, hostGPU, func() bool { return eng.HasNvidia(ctx) })
@@ -355,9 +462,9 @@ func (o *ProxmoxLXC) runComposeInLXC(ctx context.Context, eng *Engine, vmid stri
 		if d == "" {
 			return Target{}, errors.New("compose volume name is not usable")
 		}
-		_ = pct(ctx, "exec", vmid, "--", "mkdir", "-p", d).Run()
+		_ = ref.cmd(ctx, "mkdir", "-p", d).Run()
 	}
-	_ = pct(ctx, "exec", vmid, "--", "mkdir", "-p", "-m", "0700", preparedDir).Run()
+	_ = ref.cmd(ctx, "mkdir", "-p", "-m", "0700", preparedDir).Run()
 	_ = eng.Cmd(ctx, "network", "create", linkNetwork).Run()
 	// Don't let compose replace a single-image container of the same name.
 	if out, _ := eng.Cmd(ctx, "inspect", "--format",
@@ -365,78 +472,20 @@ func (o *ProxmoxLXC) runComposeInLXC(ctx context.Context, eng *Engine, vmid stri
 		_ = eng.Cmd(ctx, "rm", "-f", lxcAppContainer, lxcAppContainer+authSidecarSuffix).Run()
 	}
 	composePath := preparedDir + "/" + preparedComposeName
-	if err := o.writeEnvFile(ctx, vmid, composePath, string(file)); err != nil {
+	if err := o.writeEnvFile(ctx, ref, composePath, string(file)); err != nil {
 		return Target{}, err
 	}
-	spec.LogLine(agentv1.LogStream_LOG_STREAM_SYSTEM, "starting compose project in LXC "+vmid)
+	spec.LogLine(agentv1.LogStream_LOG_STREAM_SYSTEM, "starting compose project in "+ref.label())
 	up := eng.ComposeCmd(ctx, composeUpArgs(spec.WorkloadID, composePath, projectDir)[1:]...)
 	if err := runStreamingCmd(up, spec.LogLine); err != nil {
 		return Target{}, fmt.Errorf("docker compose up in lxc: %w", err)
 	}
-	ip, err := o.lxcIP(ctx, vmid)
+	ip, err := ref.g.IP(ctx, ref.vmid)
 	if err != nil {
 		return Target{}, err
 	}
-	spec.LogLine(agentv1.LogStream_LOG_STREAM_SYSTEM_OK, fmt.Sprintf("compose project up in LXC %s at %s:%d", vmid, ip, spec.Port))
-	return Target{URL: fmt.Sprintf("http://%s:%d", ip, spec.Port), LxcID: vmid}, nil
-}
-
-// applyGPUPassthrough sets the LXC's devN entries to every host GPU node or none,
-// restarting the LXC when they change.
-func (o *ProxmoxLXC) applyGPUPassthrough(ctx context.Context, vmid string, want bool, g gpuDevices, logLine LogFunc) error {
-	cfg, err := pct(ctx, "config", vmid).Output()
-	if err != nil {
-		return fmt.Errorf("read lxc config: %w", err)
-	}
-	ours, used := parseGPUDevEntries(string(cfg))
-	var desired []string
-	if want {
-		// Older hosts reject devN, and only after a restart, so check first.
-		if v := o.PveVersion(ctx); !supportsGPUPassthrough(v) {
-			return gpuPassthroughRefusal(v)
-		}
-		if !g.any() {
-			return errors.New("this project asks for a GPU, but none was found on the Proxmox host")
-		}
-		desired = g.nodes()
-	}
-	if sameStrings(sortedValues(ours), desired) {
-		return nil
-	}
-	if len(ours) > 0 {
-		keys := make([]string, 0, len(ours))
-		for k := range ours {
-			keys = append(keys, k)
-			delete(used, k)
-		}
-		sort.Strings(keys)
-		if out, err := pct(ctx, "set", vmid, "--delete", strings.Join(keys, ",")).CombinedOutput(); err != nil {
-			return fmt.Errorf("remove gpu passthrough: %s", strings.TrimSpace(string(out)))
-		}
-	}
-	if len(desired) > 0 {
-		args := []string{"set", vmid}
-		next := 0
-		for _, dev := range desired {
-			for used[fmt.Sprintf("dev%d", next)] {
-				next++
-			}
-			used[fmt.Sprintf("dev%d", next)] = true
-			args = append(args, fmt.Sprintf("--dev%d", next), dev+",mode=0666")
-			next++
-		}
-		if out, err := pct(ctx, args...).CombinedOutput(); err != nil {
-			return fmt.Errorf("gpu passthrough (needs Proxmox 8.1+): %s", strings.TrimSpace(string(out)))
-		}
-		logLine(agentv1.LogStream_LOG_STREAM_SYSTEM, "passing the host GPU into LXC "+vmid+": "+strings.Join(desired, " "))
-	} else {
-		logLine(agentv1.LogStream_LOG_STREAM_SYSTEM, "removed GPU passthrough from LXC "+vmid)
-	}
-	if out, err := pct(ctx, "reboot", vmid).CombinedOutput(); err != nil {
-		return fmt.Errorf("restart lxc for gpu passthrough: %s", strings.TrimSpace(string(out)))
-	}
-	_, err = o.waitForIP(ctx, vmid)
-	return err
+	spec.LogLine(agentv1.LogStream_LOG_STREAM_SYSTEM_OK, fmt.Sprintf("compose project up in %s at %s:%d", ref.label(), ip, spec.Port))
+	return Target{URL: fmt.Sprintf("http://%s:%d", ip, spec.Port), LxcID: ref.vmid}, nil
 }
 
 // parseGPUDevEntries returns our GPU devN entries and every devN key in use.
@@ -478,12 +527,12 @@ func sameStrings(a, b []string) bool {
 	return true
 }
 
-func (o *ProxmoxLXC) ensureComposeInLXC(ctx context.Context, eng *Engine, vmid string, logLine LogFunc) error {
+func (o *ProxmoxLXC) ensureComposeInLXC(ctx context.Context, eng *Engine, ref guestRef, logLine LogFunc) error {
 	if eng.ComposeCmd(ctx, "version").Run() == nil {
 		return nil
 	}
-	logLine(agentv1.LogStream_LOG_STREAM_SYSTEM, "installing docker compose for "+eng.Name()+" in LXC "+vmid)
-	if err := runStreaming(ctx, "", "pct", []string{"exec", vmid, "--", "sh", "-c", composeInstallScript(eng)}, logLine); err != nil {
+	logLine(agentv1.LogStream_LOG_STREAM_SYSTEM, "installing docker compose for "+eng.Name()+" in "+ref.label())
+	if err := runStreamingCmd(ref.cmd(ctx, "sh", "-c", composeInstallScript(eng)), logLine); err != nil {
 		return fmt.Errorf("install docker compose in lxc: %w", err)
 	}
 	return nil
@@ -520,27 +569,31 @@ func (o *ProxmoxLXC) pruneImages(ctx context.Context, eng *Engine, projectID str
 	}
 }
 
-// List reports tracked workloads whose LXC still exists. Only ensureLXC and Destroy forget
-// a vmid, once they've seen it gone.
+// List reports tracked workloads whose guest still exists with the recorded type. Only
+// ensureGuest and Destroy forget a vmid, once they've seen it gone.
 func (o *ProxmoxLXC) List(ctx context.Context) (Inventory, error) {
-	tracked := o.state.snapshot()
-	lxcs, err := clusterLXCs(ctx)
+	tracked := o.trackedGuests()
+	all, err := clusterGuests(ctx)
 	if err != nil {
-		return Inventory{IDs: o.state.projectIDs()}, err
+		ids := make([]string, 0, len(tracked))
+		for id := range tracked {
+			ids = append(ids, id)
+		}
+		return Inventory{IDs: ids}, err
 	}
 	inv := Inventory{Complete: true}
-	trackedVmids := make(map[string]bool, len(tracked))
-	for id, vmid := range tracked {
-		trackedVmids[vmid] = true
-		if _, ok := lxcs[vmid]; ok {
+	trackedVmids := o.vms.asideVmids()
+	for id, ref := range tracked {
+		trackedVmids[ref.vmid] = true
+		if g, ok := all[ref.vmid]; ok && g.is(ref.g.Kind()) {
 			inv.IDs = append(inv.IDs, id)
 		}
 	}
-	// Before Adopt, an untracked ownship LXC may be a mapping a reinstall lost. After it, a
+	// Before Adopt, an untracked ownship guest may be a mapping a reinstall lost. After it, a
 	// stray one (a failed create, another machine on the cluster) must not mute detection.
 	if !o.adopted.Load() {
-		for vmid, tagged := range lxcs {
-			if tagged && !trackedVmids[vmid] {
+		for vmid, g := range all {
+			if g.Tagged && !trackedVmids[vmid] {
 				inv.Complete = false
 				break
 			}
@@ -550,28 +603,36 @@ func (o *ProxmoxLXC) List(ctx context.Context) (Inventory, error) {
 	return inv, nil
 }
 
-// Adopt tracks workload->vmid pairs the control plane recorded, for a state file that was
-// lost. Only an existing ownship-tagged LXC no other workload holds is taken.
+// Adopt tracks workload->guest pairs the control plane recorded, for a state file that was
+// lost. Only an existing ownship-tagged guest of the recorded type that no other workload
+// holds is taken.
 func (o *ProxmoxLXC) Adopt(ctx context.Context, pairs map[string]string) ([]string, error) {
-	lxcs, err := clusterLXCs(ctx)
+	return o.AdoptKinds(ctx, pairs, nil)
+}
+
+// AdoptKinds is Adopt with each pair's guest kind (absent is an LXC).
+func (o *ProxmoxLXC) AdoptKinds(ctx context.Context, pairs map[string]string, kinds map[string]GuestKind) ([]string, error) {
+	all, err := clusterGuests(ctx)
 	if err != nil {
 		return nil, err
 	}
-	held := map[string]bool{}
-	for _, vmid := range o.state.snapshot() {
-		held[vmid] = true
+	held := o.vms.asideVmids()
+	for _, ref := range o.trackedGuests() {
+		held[ref.vmid] = true
 	}
-	// Two rows naming one vmid can't both be right; picking one would hand it the other's LXC.
+	// Two rows naming one vmid can't both be right; picking one would hand it the other's guest.
 	claims := map[string]int{}
 	for _, vmid := range pairs {
 		claims[vmid]++
 	}
 	var adopted []string
 	for id, vmid := range pairs {
-		if _, ok := o.state.get(id); ok || held[vmid] || claims[vmid] > 1 || !lxcs[vmid] {
+		kind := normalizeGuestKind(kinds[id])
+		g, live := all[vmid]
+		if _, ok := o.guestFor(id); ok || held[vmid] || claims[vmid] > 1 || !live || !g.Tagged || !g.is(kind) {
 			continue
 		}
-		if err := o.state.set(id, vmid); err != nil {
+		if err := o.track(id, guestRef{o.guestOf(kind), vmid}); err != nil {
 			sort.Strings(adopted)
 			return adopted, err
 		}
@@ -585,11 +646,11 @@ func (o *ProxmoxLXC) Adopt(ctx context.Context, pairs map[string]string) ([]stri
 
 // FollowLogs tails the app container; compose projects tail every service, prefixed by name.
 func (o *ProxmoxLXC) FollowLogs(ctx context.Context, workloadID string, onLine LogFunc) error {
-	vmid, ok := o.state.get(workloadID)
+	ref, ok := o.guestFor(workloadID)
 	if !ok {
-		return fmt.Errorf("no LXC for workload %s", workloadID)
+		return fmt.Errorf("no LXC or VM for workload %s", workloadID)
 	}
-	eng := o.lxcEngine(ctx, workloadID, vmid)
+	eng := o.guestEngine(ctx, workloadID, ref)
 	out, _ := eng.Cmd(ctx, "ps", "-aq",
 		"--filter", "label=com.docker.compose.project="+composeProject(workloadID)).Output()
 	ids := strings.Fields(string(out))
@@ -614,50 +675,39 @@ func (o *ProxmoxLXC) FollowLogs(ctx context.Context, workloadID string, onLine L
 
 // Stop stops the app and shuts the LXC down to free node resources.
 func (o *ProxmoxLXC) Stop(ctx context.Context, workloadID string) error {
-	vmid, ok := o.state.get(workloadID)
+	ref, ok := o.guestFor(workloadID)
 	if !ok {
 		return nil
 	}
-	_ = o.lxcEngine(ctx, workloadID, vmid).Cmd(ctx, "stop", lxcAppContainer).Run()
+	_ = o.guestEngine(ctx, workloadID, ref).Cmd(ctx, "stop", lxcAppContainer).Run()
 	// Otherwise Podman's restart service starts it on the next boot; Resume re-applies this.
 	_ = o.engines.SetAsleep(workloadID, true)
-	return pct(ctx, "shutdown", vmid).Run()
+	return ref.g.Shutdown(ctx, ref.vmid)
 }
 
 func (o *ProxmoxLXC) Start(ctx context.Context, workloadID string) error {
-	vmid, ok := o.state.get(workloadID)
+	ref, ok := o.guestFor(workloadID)
 	if !ok {
-		return fmt.Errorf("no LXC for workload %s", workloadID)
+		return fmt.Errorf("no LXC or VM for workload %s", workloadID)
 	}
-	if err := pct(ctx, "start", vmid).Run(); err != nil {
+	if err := ref.g.Start(ctx, ref.vmid); err != nil {
 		return err
 	}
-	if _, err := o.waitForIP(ctx, vmid); err != nil {
+	if _, err := o.waitForIP(ctx, ref); err != nil {
 		return err
 	}
 	_ = o.engines.SetAsleep(workloadID, false)
-	return o.lxcEngine(ctx, workloadID, vmid).Cmd(ctx, "start", lxcAppContainer).Run()
+	return o.guestEngine(ctx, workloadID, ref).Cmd(ctx, "start", lxcAppContainer).Run()
 }
 
 // NetworkUpdate changes net0/nameserver in place and restarts the LXC.
 func (o *ProxmoxLXC) NetworkUpdate(ctx context.Context, workloadID string, network *agentv1.NetworkConfig) error {
-	vmid, ok := o.state.get(workloadID)
+	ref, ok := o.guestFor(workloadID)
 	if !ok {
-		return fmt.Errorf("no LXC for workload %s", workloadID)
+		return fmt.Errorf("no LXC or VM for workload %s", workloadID)
 	}
-	net0, nameservers, err := net0Arg(o.cfg.Bridge, network)
-	if err != nil {
+	if err := ref.g.SetNetwork(ctx, ref.vmid, netSpec{Bridge: o.cfg.Bridge, Network: network}); err != nil {
 		return err
-	}
-	args := []string{"set", vmid, "--net0", net0}
-	if len(nameservers) > 0 {
-		args = append(args, "--nameserver", strings.Join(nameservers, " "))
-	} else {
-		// Inheriting the host resolver means clearing any nameserver set before.
-		args = append(args, "--delete", "nameserver")
-	}
-	if err := pct(ctx, args...).Run(); err != nil {
-		return fmt.Errorf("pct set net0: %w", err)
 	}
 	if err := o.Stop(ctx, workloadID); err != nil {
 		return fmt.Errorf("stop before network restart: %w", err)
@@ -673,25 +723,25 @@ func lxcStatsScript(e *Engine) string {
 
 // StatsAll samples every LXC concurrently; a failure drops only that workload's sample.
 func (o *ProxmoxLXC) StatsAll(ctx context.Context) (map[string]StatsSample, error) {
-	pairs := o.state.snapshot()
-	out := make(map[string]StatsSample, len(pairs))
+	refs := o.trackedGuests()
+	out := make(map[string]StatsSample, len(refs))
 	var mu sync.Mutex
 	var wg sync.WaitGroup
 	sem := make(chan struct{}, 4)
-	for wl, vmid := range pairs {
+	for wl, ref := range refs {
 		wg.Add(1)
 		sem <- struct{}{}
-		go func(wl, vmid string) {
+		go func(wl string, ref guestRef) {
 			defer wg.Done()
 			defer func() { <-sem }()
-			s, err := o.statsOne(ctx, o.lxcEngine(ctx, wl, vmid))
+			s, err := o.statsOne(ctx, o.guestEngine(ctx, wl, ref))
 			if err != nil {
 				return
 			}
 			mu.Lock()
 			out[wl] = s
 			mu.Unlock()
-		}(wl, vmid)
+		}(wl, ref)
 	}
 	wg.Wait()
 	return out, nil
@@ -714,7 +764,7 @@ func (o *ProxmoxLXC) statsOne(ctx context.Context, eng *Engine) (StatsSample, er
 }
 
 func (o *ProxmoxLXC) ExecArgs(ctx context.Context, workloadID string, inner []string, tty bool) ([]string, error) {
-	vmid, ok := o.state.get(workloadID)
+	ref, ok := o.guestFor(workloadID)
 	if !ok {
 		return nil, fmt.Errorf("no LXC for workload %s", workloadID)
 	}
@@ -723,40 +773,48 @@ func (o *ProxmoxLXC) ExecArgs(ctx context.Context, workloadID string, inner []st
 		args = append(args, "-t")
 	}
 	args = append(args, lxcAppContainer)
-	return o.lxcEngine(ctx, workloadID, vmid).ExecArgv(append(args, inner...)...), nil
+	p, err := ref.g.ExecPrefix(ctx, ref.vmid, tty)
+	if err != nil {
+		return nil, err
+	}
+	return o.workloadEngine(ctx, workloadID).InGuest(p).ExecArgv(append(args, inner...)...), nil
 }
 
 // LxcExecArgs opens a shell in the LXC rather than the app container.
 func (o *ProxmoxLXC) LxcExecArgs(ctx context.Context, workloadID string, inner []string, tty bool) ([]string, error) {
-	vmid, ok := o.state.get(workloadID)
+	ref, ok := o.guestFor(workloadID)
 	if !ok {
 		return nil, fmt.Errorf("no LXC for workload %s", workloadID)
 	}
-	return append([]string{"pct", "exec", vmid, "--"}, inner...), nil
+	return ref.argv(ctx, tty, inner...), nil
 }
 
 // Destroy removes the workload's LXC.
 func (o *ProxmoxLXC) Destroy(ctx context.Context, workloadID string, keepVolumes bool) error {
-	vmid, ok := o.state.get(workloadID)
+	if !keepVolumes {
+		if err := o.destroyAside(ctx, workloadID); err != nil {
+			return err
+		}
+	}
+	ref, ok := o.guestFor(workloadID)
 	if !ok {
 		return nil
 	}
 	// Deleted outside Ownship: only the mapping is left.
-	if lxcGone(ctx, vmid) {
-		return o.state.remove(workloadID)
+	if ref.g.Gone(ctx, ref.vmid) {
+		return o.untrack(workloadID, ref)
 	}
 	if keepVolumes {
-		// Volumes live on the LXC's rootfs, so keeping them means keeping the LXC, stopped.
-		_ = o.lxcEngine(ctx, workloadID, vmid).Cmd(ctx, "rm", "-f", lxcAppContainer).Run()
-		_ = pct(ctx, "stop", vmid).Run()
+		// Volumes live on the guest's disk, so keeping them means keeping the guest, stopped.
+		_ = o.guestEngine(ctx, workloadID, ref).Cmd(ctx, "rm", "-f", lxcAppContainer).Run()
+		_ = ref.g.Stop(ctx, ref.vmid)
 		return nil
 	}
-	_ = pct(ctx, "stop", vmid).Run()
-	if out, err := pct(ctx, "destroy", vmid, "--purge").CombinedOutput(); err != nil {
-		return fmt.Errorf("destroy lxc: %s", strings.TrimSpace(string(out)))
+	if err := ref.g.Destroy(ctx, ref.vmid); err != nil {
+		return err
 	}
 	_ = o.engines.Remove(workloadID)
-	return o.state.remove(workloadID)
+	return o.untrack(workloadID, ref)
 }
 
 func (o *ProxmoxLXC) Nodes(ctx context.Context) []*agentv1.NodeInfo {
@@ -1015,70 +1073,162 @@ func (o *ProxmoxLXC) firstSharedVztmplStorage(ctx context.Context, node string) 
 	return "", fmt.Errorf("no shared vztmpl storage on node %s", node)
 }
 
-// ensureLXC returns the project's LXC, creating it on first deploy from templateVmid,
-// else baseTemplate, baseOS or a fallback.
-func (o *ProxmoxLXC) ensureLXC(ctx context.Context, workloadID, baseTemplate, templateVmid, baseOS string, res *agentv1.Resources, targetNode, requestedHostname string, network *agentv1.NetworkConfig, logLine LogFunc) (string, error) {
-	defer o.createLocks.lock(workloadID)()
+// ensureGuest returns the workload's guest, creating one of the requested kind on first deploy.
+func (o *ProxmoxLXC) ensureGuest(ctx context.Context, spec RunSpec) (guestRef, error) {
+	defer o.createLocks.lock(spec.WorkloadID)()
 
-	if vmid, ok := o.state.get(workloadID); ok {
-		if !lxcGone(ctx, vmid) {
-			// Redeploys need the same resize, or new cores/memory limits are ignored.
-			if err := o.sizeAndStart(ctx, vmid, workloadID, res); err != nil {
-				return "", err
+	kind := normalizeGuestKind(spec.GuestKind)
+	if err := o.guestConflict(spec.WorkloadID); err != nil {
+		return guestRef{}, err
+	}
+	if ref, ok := o.guestFor(spec.WorkloadID); ok {
+		// A prepared convert target becomes the workload's guest; the old one is kept aside.
+		if ref.g.Kind() != kind {
+			if promoted, ok, err := o.promotePending(ctx, spec.WorkloadID, ref, kind); err != nil || ok {
+				if err != nil {
+					return guestRef{}, err
+				}
+				spec.LogLine(agentv1.LogStream_LOG_STREAM_SYSTEM, "converted: now running in "+promoted.label()+", "+ref.label()+" kept until the convert commits")
+				ref = promoted
 			}
-			return vmid, nil
 		}
-		logLine(agentv1.LogStream_LOG_STREAM_SYSTEM_WARN, "LXC "+vmid+" no longer exists in Proxmox; creating a new one")
-		if err := o.state.remove(workloadID); err != nil {
-			return "", err
+		// Never silently swap the guest under existing data; that is a convert.
+		if ref.g.Kind() != kind {
+			return guestRef{}, fmt.Errorf("this workload runs in %s; moving it to %s is a conversion, not a deploy",
+				ref.label(), guestKindNoun(kind))
+		}
+		if !ref.g.Gone(ctx, ref.vmid) {
+			// Redeploys need the same resize, or new cores/memory limits are ignored.
+			if err := o.sizeAndStart(ctx, ref, spec.WorkloadID, spec.Resources); err != nil {
+				return guestRef{}, err
+			}
+			return ref, nil
+		}
+		spec.LogLine(agentv1.LogStream_LOG_STREAM_SYSTEM_WARN, ref.label()+" no longer exists in Proxmox; creating a new one")
+		if err := o.untrack(spec.WorkloadID, ref); err != nil {
+			return guestRef{}, err
 		}
 	}
+	if kind == GuestVM {
+		return o.createVM(ctx, spec)
+	}
+	return o.createLXC(ctx, spec.WorkloadID, spec.BaseTemplate, spec.TemplateVmid, spec.BaseOS, spec.Resources,
+		spec.TargetNode, spec.Hostname, spec.Network, spec.LogLine)
+}
 
+func guestKindNoun(k GuestKind) string {
+	if k == GuestVM {
+		return "a VM"
+	}
+	return "an LXC"
+}
+
+// createVM clones the image's template, then configures and boots it outside the vmid lock,
+// since importing a template and first boot are both slow.
+func (o *ProxmoxLXC) createVM(ctx context.Context, spec RunSpec) (guestRef, error) {
+	if o.vm == nil {
+		o.vm = newVMGuest(o)
+	}
+	img, err := findVMImage(ctx, o.vmImageDir(), spec.VmImage)
+	if err != nil {
+		return guestRef{}, err
+	}
+	base, err := o.ensureVMBase(ctx, img, spec.LogLine)
+	if err != nil {
+		return guestRef{}, err
+	}
+	authorized, _, err := ensureVMKey(o.vm.paths)
+	if err != nil {
+		return guestRef{}, fmt.Errorf("VM SSH key: %w", err)
+	}
+	req := createReq{WorkloadID: spec.WorkloadID, Hostname: lxcHostname(spec.Hostname, spec.WorkloadID),
+		Cores: "1", MemoryMB: strconv.Itoa(vmDefaultMemoryMB),
+		Net:     netSpec{Bridge: o.cfg.Bridge, Network: spec.Network},
+		Storage: o.cfg.Storage, RootfsGB: o.cfg.RootfsGB,
+		VMImage: spec.VmImage, BaseVmid: base, AuthorizedKey: authorized, LogLine: spec.LogLine}
+	if v := spec.Resources.GetVcpu(); v > 0 {
+		req.Cores = strconv.FormatUint(uint64(v), 10)
+	}
+	if m := spec.Resources.GetMemoryMb(); m > 0 {
+		req.MemoryMB = strconv.FormatUint(uint64(m), 10)
+	}
+
+	o.vmidMu.Lock()
+	vmid, err := nextVmid(ctx)
+	if err != nil {
+		o.vmidMu.Unlock()
+		return guestRef{}, err
+	}
+	req.Vmid = vmid
+	createErr := o.vm.Create(ctx, req)
+	o.vmidMu.Unlock() // vmid is claimed once the clone ran
+	if createErr != nil {
+		return guestRef{}, createErr
+	}
+	ref := guestRef{o.vm, vmid}
+	// A VM that never booted would be reused broken on every redeploy; remove what we made.
+	fail := func(e error) (guestRef, error) {
+		o.vm.discard(vmid)
+		_ = o.untrackIn(ctx, spec.WorkloadID, ref)
+		return guestRef{}, e
+	}
+	if err := o.vm.configure(ctx, req); err != nil {
+		return fail(err)
+	}
+	// Tracked before boot so Ready can record the pinned host key against it.
+	if err := o.trackIn(ctx, spec.WorkloadID, ref); err != nil {
+		return fail(err)
+	}
+	if err := o.startAndTrack(ctx, ref, spec.WorkloadID); err != nil {
+		return fail(err)
+	}
+	return ref, nil
+}
+
+// createLXC creates the project's LXC from templateVmid, else baseTemplate, baseOS or a fallback.
+func (o *ProxmoxLXC) createLXC(ctx context.Context, workloadID, baseTemplate, templateVmid, baseOS string, res *agentv1.Resources, targetNode, requestedHostname string, network *agentv1.NetworkConfig, logLine LogFunc) (guestRef, error) {
 	// These reach pct argv: reject anything that could pass as a flag.
 	if !validPctArg(templateVmid, reVmid) {
-		return "", fmt.Errorf("invalid template VMID %q", templateVmid)
+		return guestRef{}, fmt.Errorf("invalid template VMID %q", templateVmid)
 	}
 	if !validPctArg(targetNode, reNode) {
-		return "", fmt.Errorf("invalid target node %q", targetNode)
+		return guestRef{}, fmt.Errorf("invalid target node %q", targetNode)
 	}
 	if !validPctArg(baseTemplate, reVolid) {
-		return "", fmt.Errorf("invalid base template %q", baseTemplate)
+		return guestRef{}, fmt.Errorf("invalid base template %q", baseTemplate)
 	}
 	if !validPctArg(baseOS, reBaseOS) {
-		return "", fmt.Errorf("invalid base OS %q", baseOS)
+		return guestRef{}, fmt.Errorf("invalid base OS %q", baseOS)
 	}
 
+	g := lxcGuest{}
 	o.vmidMu.Lock()
 	newVmid, err := nextVmid(ctx)
 	if err != nil {
 		o.vmidMu.Unlock()
-		return "", err
+		return guestRef{}, err
 	}
-	hostname := lxcHostname(requestedHostname, workloadID)
+	ref := guestRef{g, newVmid}
+	req := createReq{Vmid: newVmid, WorkloadID: workloadID, Hostname: lxcHostname(requestedHostname, workloadID),
+		TargetNode: targetNode, LogLine: logLine}
 
 	if templateVmid != "" {
-		args := []string{"clone", templateVmid, newVmid, "--hostname", hostname}
-		if targetNode != "" {
-			args = append(args, "--target", targetNode)
-		}
-		logLine(agentv1.LogStream_LOG_STREAM_SYSTEM, "cloning LXC "+newVmid+" from template "+templateVmid)
-		out, cloneErr := pct(ctx, args...).CombinedOutput()
+		req.CloneFrom = templateVmid
+		cloneErr := g.Create(ctx, req)
 		o.vmidMu.Unlock() // vmid is claimed once clone/create runs
 		if cloneErr != nil {
-			return "", fmt.Errorf("clone template: %s", strings.TrimSpace(string(out)))
+			return guestRef{}, cloneErr
 		}
-		// pct clone takes no --tags; the marker is best-effort.
-		_ = pct(ctx, "set", newVmid, "--tags", ownshipTag).Run()
-		if err := o.sizeAndStart(ctx, newVmid, workloadID, res); err != nil {
-			return "", err
+		if err := o.sizeAndStart(ctx, ref, workloadID, res); err != nil {
+			return guestRef{}, err
 		}
-		return newVmid, nil
+		return ref, nil
 	}
 
 	// pct create has no --target, so refuse rather than create on the wrong node.
 	if local := o.localNodeName(ctx); targetNode != "" && targetNode != local {
 		o.vmidMu.Unlock()
-		return "", fmt.Errorf(
+		return guestRef{}, fmt.Errorf(
 			"creating an LXC from a base template on node %s isn't supported from this agent (running on %s) — use a golden template VMID (clone supports --target) or leave the node unpinned",
 			targetNode, local)
 	}
@@ -1100,82 +1250,81 @@ func (o *ProxmoxLXC) ensureLXC(ctx context.Context, workloadID, baseTemplate, te
 		}
 		if err != nil {
 			o.vmidMu.Unlock()
-			return "", err
+			return guestRef{}, err
 		}
 	}
-	cores := "1"
+	req.Cores = "1"
 	if v := res.GetVcpu(); v > 0 {
-		cores = strconv.FormatUint(uint64(v), 10)
+		req.Cores = strconv.FormatUint(uint64(v), 10)
 	}
-	mem := "512"
+	req.MemoryMB = "512"
 	if m := res.GetMemoryMb(); m > 0 {
-		mem = strconv.FormatUint(uint64(m), 10)
+		req.MemoryMB = strconv.FormatUint(uint64(m), 10)
 	}
-	net0, nameservers, err := net0Arg(o.cfg.Bridge, network)
-	if err != nil {
-		o.vmidMu.Unlock()
-		return "", err
-	}
-	args := []string{"create", newVmid, baseTemplate,
-		"--hostname", hostname,
-		"--cores", cores,
-		"--memory", mem,
-		"--rootfs", fmt.Sprintf("%s:%d", o.cfg.Storage, o.cfg.RootfsGB),
-		"--net0", net0,
-		// Required to run Docker in an unprivileged LXC.
-		"--features", "nesting=1,keyctl=1",
-		"--unprivileged", "1",
-		"--onboot", "1",
-		"--tags", ownshipTag,
-	}
-	// Empty inherits the host's resolver, like stock pct.
-	if len(nameservers) > 0 {
-		args = append(args, "--nameserver", strings.Join(nameservers, " "))
-	}
-	logLine(agentv1.LogStream_LOG_STREAM_SYSTEM, "creating LXC "+newVmid+" from "+baseTemplate)
-	out, createErr := pct(ctx, args...).CombinedOutput()
+	req.BaseVolid = baseTemplate
+	req.Net = netSpec{Bridge: o.cfg.Bridge, Network: network}
+	req.Storage, req.RootfsGB = o.cfg.Storage, o.cfg.RootfsGB
+	createErr := g.Create(ctx, req)
 	o.vmidMu.Unlock() // vmid is claimed once clone/create runs
 	if createErr != nil {
-		return "", fmt.Errorf("create lxc: %s", strings.TrimSpace(string(out)))
+		return guestRef{}, createErr
 	}
-	if err := o.startAndTrack(ctx, newVmid, workloadID); err != nil {
-		return "", err
+	if err := o.startAndTrack(ctx, ref, workloadID); err != nil {
+		return guestRef{}, err
 	}
-	return newVmid, nil
+	return ref, nil
 }
 
-// sizeAndStart resizes the LXC, starts it and waits for an IP.
-func (o *ProxmoxLXC) sizeAndStart(ctx context.Context, vmid, workloadID string, res *agentv1.Resources) error {
-	setArgs := []string{"set", vmid}
-	if v := res.GetVcpu(); v > 0 {
-		setArgs = append(setArgs, "--cores", strconv.FormatUint(uint64(v), 10))
-	}
-	if m := res.GetMemoryMb(); m > 0 {
-		setArgs = append(setArgs, "--memory", strconv.FormatUint(uint64(m), 10))
-	}
-	if len(setArgs) > 2 {
-		if out, err := pct(ctx, setArgs...).CombinedOutput(); err != nil {
-			return fmt.Errorf("size lxc: %s", strings.TrimSpace(string(out)))
-		}
-	}
-	return o.startAndTrack(ctx, vmid, workloadID)
-}
-
-// startAndTrack starts the LXC, records the mapping and waits for an IP.
-func (o *ProxmoxLXC) startAndTrack(ctx context.Context, vmid, workloadID string) error {
-	// A redeploy reuses a running LXC, and pct start fails on one.
-	if out, _ := pct(ctx, "status", vmid).Output(); !strings.Contains(string(out), "running") {
-		if out, err := pct(ctx, "start", vmid).CombinedOutput(); err != nil {
-			return fmt.Errorf("start lxc: %s", strings.TrimSpace(string(out)))
-		}
-	}
-	if err := o.state.set(workloadID, vmid); err != nil {
+// sizeAndStart resizes the guest, starts it and waits for an IP.
+func (o *ProxmoxLXC) sizeAndStart(ctx context.Context, ref guestRef, workloadID string, res *agentv1.Resources) error {
+	restart, err := ref.g.Resize(ctx, ref.vmid, res)
+	if err != nil {
 		return err
 	}
-	if _, err := o.waitForIP(ctx, vmid); err != nil {
+	if restart && ref.g.Running(ctx, ref.vmid) {
+		if err := ref.g.Reboot(ctx, ref.vmid); err != nil {
+			return err
+		}
+	}
+	return o.startAndTrack(ctx, ref, workloadID)
+}
+
+// startAndTrack starts the guest, records the mapping and waits for an IP.
+func (o *ProxmoxLXC) startAndTrack(ctx context.Context, ref guestRef, workloadID string) error {
+	// A redeploy reuses a running guest, and start fails on one; it still has to be reachable.
+	if !ref.g.Running(ctx, ref.vmid) {
+		if err := ref.g.Start(ctx, ref.vmid); err != nil {
+			return err
+		}
+	} else if err := ref.g.Ready(ctx, ref.vmid); err != nil {
+		return err
+	}
+	if err := o.trackIn(ctx, workloadID, ref); err != nil {
+		return err
+	}
+	if _, err := o.waitForIP(ctx, ref); err != nil {
 		return err
 	}
 	return nil
+}
+
+// track records the workload's guest in the state file of its kind.
+func (o *ProxmoxLXC) track(workloadID string, ref guestRef) error {
+	if ref.g.Kind() == GuestVM {
+		w, _ := o.vms.get(workloadID)
+		if w.Vmid != ref.vmid {
+			w = vmWorkload{Vmid: ref.vmid}
+		}
+		return o.vms.set(workloadID, w)
+	}
+	return o.state.set(workloadID, ref.vmid)
+}
+
+func (o *ProxmoxLXC) untrack(workloadID string, ref guestRef) error {
+	if ref.g.Kind() == GuestVM {
+		return o.vms.remove(workloadID)
+	}
+	return o.state.remove(workloadID)
 }
 
 // pkgInstallScript uses apt-get, dnf or yum, and exits 0 when none exists.
@@ -1195,35 +1344,35 @@ fi`, list, list, list, list)
 }
 
 // ensureDocker installs Docker via get.docker.com, which supports any base template.
-func (o *ProxmoxLXC) ensureDocker(ctx context.Context, vmid string, logLine LogFunc) error {
-	if pct(ctx, "exec", vmid, "--", "sh", "-c", "command -v docker >/dev/null 2>&1").Run() == nil {
+func (o *ProxmoxLXC) ensureDocker(ctx context.Context, ref guestRef, logLine LogFunc) error {
+	if ref.cmd(ctx, "sh", "-c", "command -v docker >/dev/null 2>&1").Run() == nil {
 		return nil
 	}
-	logLine(agentv1.LogStream_LOG_STREAM_SYSTEM, "installing Docker in LXC "+vmid)
+	logLine(agentv1.LogStream_LOG_STREAM_SYSTEM, "installing Docker in "+ref.label())
 	curlScript := fmt.Sprintf(`command -v curl >/dev/null 2>&1 || { %s
 }`, pkgInstallScript("curl"))
-	if err := runStreaming(ctx, "", "pct", []string{"exec", vmid, "--", "sh", "-c", curlScript}, logLine); err != nil {
-		return fmt.Errorf("install curl in lxc: %w", err)
+	if err := runStreamingCmd(ref.cmd(ctx, "sh", "-c", curlScript), logLine); err != nil {
+		return fmt.Errorf("install curl in %s: %w", ref.word(), err)
 	}
 	script := `set -e
 export LC_ALL=C LANG=C DEBIAN_FRONTEND=noninteractive
 curl -fsSL https://get.docker.com | sh
 (systemctl enable --now docker 2>/dev/null || service docker start 2>/dev/null || true)`
-	if err := runStreaming(ctx, "", "pct", []string{"exec", vmid, "--", "sh", "-c", script}, logLine); err != nil {
-		return fmt.Errorf("install docker in lxc: %w", err)
+	if err := runStreamingCmd(ref.cmd(ctx, "sh", "-c", script), logLine); err != nil {
+		return fmt.Errorf("install docker in %s: %w", ref.word(), err)
 	}
 	return nil
 }
 
-func (o *ProxmoxLXC) ensureEngine(ctx context.Context, eng *Engine, vmid string, logLine LogFunc) error {
+func (o *ProxmoxLXC) ensureEngine(ctx context.Context, eng *Engine, ref guestRef, logLine LogFunc) error {
 	if eng.Kind == KindDocker {
-		return o.ensureDocker(ctx, vmid, logLine)
+		return o.ensureDocker(ctx, ref, logLine)
 	}
-	if pct(ctx, "exec", vmid, "--", "sh", "-c", "command -v podman >/dev/null 2>&1").Run() == nil {
+	if ref.cmd(ctx, "sh", "-c", "command -v podman >/dev/null 2>&1").Run() == nil {
 		return nil
 	}
-	logLine(agentv1.LogStream_LOG_STREAM_SYSTEM, "installing Podman in LXC "+vmid)
-	if err := runStreaming(ctx, "", "pct", []string{"exec", vmid, "--", "sh", "-c", engineInstallScript(eng.Kind)}, logLine); err != nil {
+	logLine(agentv1.LogStream_LOG_STREAM_SYSTEM, "installing Podman in "+ref.label())
+	if err := runStreamingCmd(ref.cmd(ctx, "sh", "-c", engineInstallScript(eng.Kind)), logLine); err != nil {
 		return fmt.Errorf("install podman in lxc: %w", err)
 	}
 	return nil
@@ -1253,82 +1402,82 @@ func (o *ProxmoxLXC) imageUser(ctx context.Context, eng *Engine, image string) (
 }
 
 // buildInLXC builds with the repo's Dockerfile if present or forced, else Nixpacks.
-func (o *ProxmoxLXC) buildInLXC(ctx context.Context, eng *Engine, vmid, image string, repo *agentv1.RepoSource, build *agentv1.BuildConfig, cache bool, logLine LogFunc) error {
+func (o *ProxmoxLXC) buildInLXC(ctx context.Context, eng *Engine, ref guestRef, image string, repo *agentv1.RepoSource, build *agentv1.BuildConfig, cache bool, logLine LogFunc) error {
 	const dir = "/root/app"
-	if err := gitSync(ctx, lxcGit{o, vmid}, repo, dir, cache, logLine); err != nil {
+	if err := gitSync(ctx, lxcGit{o, ref}, repo, dir, cache, logLine); err != nil {
 		return err
 	}
 
 	dockerfile := chooseDockerfile(build.GetType(), func() bool {
-		return pct(ctx, "exec", vmid, "--", "test", "-f", dir+"/Dockerfile").Run() == nil
+		return ref.cmd(ctx, "test", "-f", dir+"/Dockerfile").Run() == nil
 	})
 	if !dockerfile {
 		install := "command -v nixpacks >/dev/null 2>&1 || curl -fsSL https://nixpacks.com/install.sh | bash"
-		if err := runStreaming(ctx, "", "pct", []string{"exec", vmid, "--", "sh", "-c", install}, logLine); err != nil {
+		if err := runStreamingCmd(ref.cmd(ctx, "sh", "-c", install), logLine); err != nil {
 			return fmt.Errorf("install nixpacks in lxc: %w", err)
 		}
 	}
 	for _, step := range buildSteps(eng, image, dockerfile) {
-		if err := runStreamingCmd(lxcStepCmd(ctx, vmid, dir, step), logLine); err != nil {
+		if err := runStreamingCmd(lxcStepCmd(ctx, ref, dir, step), logLine); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-// lxcStepCmd runs a host build step inside the LXC from dir; dir and argv stay positional,
+// lxcStepCmd runs a host build step inside the guest from dir; dir and argv stay positional,
 // never part of the script.
-func lxcStepCmd(ctx context.Context, vmid, dir string, argv []string) *exec.Cmd {
-	return pct(ctx, append([]string{"exec", vmid, "--", "sh", "-c", `cd "$1" && shift && exec "$@"`, "sh", dir}, argv...)...)
+func lxcStepCmd(ctx context.Context, ref guestRef, dir string, argv []string) *exec.Cmd {
+	return ref.cmd(ctx, append([]string{"sh", "-c", `cd "$1" && shift && exec "$@"`, "sh", dir}, argv...)...)
 }
 
-// lxcFS reads a checkout inside the LXC, resolving symlinks there rather than on the host.
+// lxcFS reads a checkout inside the guest, resolving symlinks there rather than on the host.
 type lxcFS struct {
-	ctx  context.Context
-	vmid string
+	ctx context.Context
+	ref guestRef
 }
 
 func (f lxcFS) realpath(p string) (string, error) {
-	out, err := pct(f.ctx, "exec", f.vmid, "--", "realpath", "-e", "--", p).Output()
+	out, err := f.ref.cmd(f.ctx, "realpath", "-e", "--", p).Output()
 	return strings.TrimSpace(string(out)), err
 }
 
 func (f lxcFS) readHead(p string, n int) ([]byte, error) {
-	return pct(f.ctx, "exec", f.vmid, "--", "head", "-c", strconv.Itoa(n), "--", p).Output()
+	return f.ref.cmd(f.ctx, "head", "-c", strconv.Itoa(n), "--", p).Output()
 }
 
-// lxcGit runs git inside a workload's LXC. Env can't cross pct exec, so a token or deploy
-// key goes in a 0600 file there instead, with the same protocol allowlist as the host.
+// lxcGit runs git inside a workload's guest. Env can't cross the exec prefix, so a token or
+// deploy key goes in a 0600 file there instead, with the same protocol allowlist as the host.
 type lxcGit struct {
-	o    *ProxmoxLXC
-	vmid string
+	o   *ProxmoxLXC
+	ref guestRef
 }
 
 func (g lxcGit) git(ctx context.Context, args []string, _ []string) *exec.Cmd {
-	return pct(ctx, append([]string{"exec", g.vmid, "--", "git"}, args...)...)
+	return g.ref.cmd(ctx, append([]string{"git"}, args...)...)
 }
 
 func (g lxcGit) hasCheckout(ctx context.Context, dest string) bool {
-	return pct(ctx, "exec", g.vmid, "--", "test", "-d", dest+"/.git").Run() == nil
+	return g.ref.cmd(ctx, "test", "-d", dest+"/.git").Run() == nil
 }
 
 func (g lxcGit) removeAll(ctx context.Context, dest string) error {
-	_ = pct(ctx, "exec", g.vmid, "--", "rm", "-rf", dest).Run()
+	_ = g.ref.cmd(ctx, "rm", "-rf", dest).Run()
 	return nil
 }
 
 func (g lxcGit) auth(ctx context.Context, repo *agentv1.RepoSource, _ string) ([]string, []string, func(), error) {
-	g.o.ensureGitInLXC(ctx, g.vmid)
+	g.o.ensureGitInLXC(ctx, g.ref)
 	args := gitProtocolArgs()
 	var files []string
 	cleanup := func() {
 		if len(files) > 0 {
-			_ = pct(context.Background(), append([]string{"exec", g.vmid, "--", "rm", "-f"}, files...)...).Run()
+			_ = g.ref.cmd(context.Background(), append([]string{"rm", "-f"}, files...)...).Run()
 		}
 	}
 	if token := repo.GetInstallationToken(); token != "" {
 		const tokenPath = "/run/ownship-git-token"
-		if err := g.o.writeEnvFile(ctx, g.vmid, tokenPath, token); err != nil {
+		if err := g.o.writeEnvFile(ctx, g.ref, tokenPath, token); err != nil {
 			return nil, nil, nil, err
 		}
 		files = append(files, tokenPath)
@@ -1336,18 +1485,18 @@ func (g lxcGit) auth(ctx context.Context, repo *agentv1.RepoSource, _ string) ([
 			`credential.helper=!f() { echo username=x-access-token; echo "password=$(cat `+tokenPath+`)"; }; f`)
 	}
 	if key := repo.GetSshPrivateKey(); key != "" {
-		g.o.ensureSSHInLXC(ctx, g.vmid)
+		g.o.ensureSSHInLXC(ctx, g.ref)
 		const keyPath = "/run/ownship-deploy-key"
 		// Persistent, so a host key trusted on first use stays pinned.
 		const knownHosts = "/root/.ownship-known-hosts"
-		if err := g.o.writeEnvFile(ctx, g.vmid, keyPath, key+"\n"); err != nil {
+		if err := g.o.writeEnvFile(ctx, g.ref, keyPath, key+"\n"); err != nil {
 			cleanup()
 			return nil, nil, nil, err
 		}
 		files = append(files, keyPath)
 		pinned := repo.GetSshKnownHosts() != ""
 		if pinned {
-			if err := g.o.writeEnvFile(ctx, g.vmid, knownHosts, repo.GetSshKnownHosts()+"\n"); err != nil {
+			if err := g.o.writeEnvFile(ctx, g.ref, knownHosts, repo.GetSshKnownHosts()+"\n"); err != nil {
 				cleanup()
 				return nil, nil, nil, err
 			}
@@ -1362,38 +1511,38 @@ func (g lxcGit) auth(ctx context.Context, repo *agentv1.RepoSource, _ string) ([
 	return args, nil, cleanup, nil
 }
 
-func (o *ProxmoxLXC) ensureGitInLXC(ctx context.Context, vmid string) {
+func (o *ProxmoxLXC) ensureGitInLXC(ctx context.Context, ref guestRef) {
 	gitScript := fmt.Sprintf(`command -v git >/dev/null 2>&1 || { %s
 }`, pkgInstallScript("git", "ca-certificates"))
-	_ = pct(ctx, "exec", vmid, "--", "sh", "-c", gitScript).Run()
+	_ = ref.cmd(ctx, "sh", "-c", gitScript).Run()
 }
 
 // ensureSSHInLXC: the package is openssh-client on apt, openssh-clients on dnf/yum.
-func (o *ProxmoxLXC) ensureSSHInLXC(ctx context.Context, vmid string) {
+func (o *ProxmoxLXC) ensureSSHInLXC(ctx context.Context, ref guestRef) {
 	script := `command -v ssh >/dev/null 2>&1 && exit 0
 export LC_ALL=C LANG=C DEBIAN_FRONTEND=noninteractive
 if command -v apt-get >/dev/null 2>&1; then apt-get update -y -q && apt-get install -y -q openssh-client
 elif command -v dnf >/dev/null 2>&1; then dnf install -y openssh-clients
 elif command -v yum >/dev/null 2>&1; then yum install -y openssh-clients
 fi`
-	_ = pct(ctx, "exec", vmid, "--", "sh", "-c", script).Run()
+	_ = ref.cmd(ctx, "sh", "-c", script).Run()
 }
 
 // applyRootPassword pipes the password to chpasswd to keep it off argv. Best-effort:
 // without chpasswd only console access is lost.
-func (o *ProxmoxLXC) applyRootPassword(ctx context.Context, vmid, password string, logLine LogFunc) {
+func (o *ProxmoxLXC) applyRootPassword(ctx context.Context, ref guestRef, password string, logLine LogFunc) {
 	if password == "" || strings.ContainsAny(password, ":\n") {
 		return
 	}
-	cmd := pct(ctx, "exec", vmid, "--", "chpasswd")
+	cmd := ref.cmd(ctx, "chpasswd")
 	cmd.Stdin = strings.NewReader("root:" + password + "\n")
 	if out, err := cmd.CombinedOutput(); err != nil {
 		logLine(agentv1.LogStream_LOG_STREAM_SYSTEM_WARN, "could not set the LXC root password: "+strings.TrimSpace(string(out)))
 	}
 }
 
-func (o *ProxmoxLXC) writeEnvFile(ctx context.Context, vmid, path, content string) error {
-	cmd := pct(ctx, "exec", vmid, "--", "sh", "-c", "umask 077; cat > "+path)
+func (o *ProxmoxLXC) writeEnvFile(ctx context.Context, ref guestRef, path, content string) error {
+	cmd := ref.cmd(ctx, "sh", "-c", "umask 077; cat > "+path)
 	cmd.Stdin = strings.NewReader(content)
 	if out, err := cmd.CombinedOutput(); err != nil {
 		return fmt.Errorf("write env file in lxc: %s", strings.TrimSpace(string(out)))
@@ -1404,7 +1553,7 @@ func (o *ProxmoxLXC) writeEnvFile(ctx context.Context, vmid, path, content strin
 // Backups stream through pct exec's stdio; paths come only from safeVolumeHostPath.
 
 func (o *ProxmoxLXC) VolumeTarCmd(ctx context.Context, workloadID, name string) (*exec.Cmd, error) {
-	vmid, ok := o.state.get(workloadID)
+	ref, ok := o.guestFor(workloadID)
 	if !ok {
 		return nil, fmt.Errorf("no LXC for workload %s", workloadID)
 	}
@@ -1412,11 +1561,11 @@ func (o *ProxmoxLXC) VolumeTarCmd(ctx context.Context, workloadID, name string) 
 	if err != nil {
 		return nil, err
 	}
-	return pct(ctx, "exec", vmid, "--", "tar", "czf", "-", "-C", host, "."), nil
+	return ref.cmd(ctx, "tar", "czf", "-", "-C", host, "."), nil
 }
 
 func (o *ProxmoxLXC) VolumeUntarCmd(ctx context.Context, workloadID, name string) (*exec.Cmd, error) {
-	vmid, ok := o.state.get(workloadID)
+	ref, ok := o.guestFor(workloadID)
 	if !ok {
 		return nil, fmt.Errorf("no LXC for workload %s", workloadID)
 	}
@@ -1424,12 +1573,12 @@ func (o *ProxmoxLXC) VolumeUntarCmd(ctx context.Context, workloadID, name string
 	if err != nil {
 		return nil, err
 	}
-	return pct(ctx, "exec", vmid, "--", "sh", "-c",
+	return ref.cmd(ctx, "sh", "-c",
 		"mkdir -p "+host+" && find "+host+" -mindepth 1 -delete && tar xzf - -C "+host), nil
 }
 
 func (o *ProxmoxLXC) VolumeWriteFileCmd(ctx context.Context, workloadID, name, fileName string) (*exec.Cmd, error) {
-	vmid, ok := o.state.get(workloadID)
+	ref, ok := o.guestFor(workloadID)
 	if !ok {
 		return nil, fmt.Errorf("no LXC for workload %s", workloadID)
 	}
@@ -1440,21 +1589,21 @@ func (o *ProxmoxLXC) VolumeWriteFileCmd(ctx context.Context, workloadID, name, f
 	if err := validVolumeFileName(fileName); err != nil {
 		return nil, err
 	}
-	return pct(ctx, "exec", vmid, "--", "sh", "-c", "mkdir -p "+host+" && cat > "+host+"/"+fileName), nil
+	return ref.cmd(ctx, "sh", "-c", "mkdir -p "+host+" && cat > "+host+"/"+fileName), nil
 }
 
 func (o *ProxmoxLXC) AppExecCmd(ctx context.Context, workloadID, script string) (*exec.Cmd, error) {
-	vmid, ok := o.state.get(workloadID)
+	ref, ok := o.guestFor(workloadID)
 	if !ok {
 		return nil, fmt.Errorf("no LXC for workload %s", workloadID)
 	}
-	return o.lxcEngine(ctx, workloadID, vmid).Cmd(ctx, "exec", "-i", lxcAppContainer, "sh", "-c", script), nil
+	return o.guestEngine(ctx, workloadID, ref).Cmd(ctx, "exec", "-i", lxcAppContainer, "sh", "-c", script), nil
 }
 
 // Volume browsing runs as root in the workload's LXC, the same trust as the web terminal.
 
 func (o *ProxmoxLXC) VolumeListCmd(ctx context.Context, workloadID, name, relPath string) (*exec.Cmd, error) {
-	vmid, ok := o.state.get(workloadID)
+	ref, ok := o.guestFor(workloadID)
 	if !ok {
 		return nil, fmt.Errorf("no LXC for workload %s", workloadID)
 	}
@@ -1466,12 +1615,12 @@ func (o *ProxmoxLXC) VolumeListCmd(ctx context.Context, workloadID, name, relPat
 	if relPath != "" {
 		target += "/" + relPath
 	}
-	return pct(ctx, "exec", vmid, "--", "find", target, "-maxdepth", "1", "-mindepth", "1",
+	return ref.cmd(ctx, "find", target, "-maxdepth", "1", "-mindepth", "1",
 		"-exec", "stat", "-c", "%n|%s|%Y|%F", "{}", "+"), nil
 }
 
 func (o *ProxmoxLXC) VolumeReadCmd(ctx context.Context, workloadID, name, relPath string) (*exec.Cmd, error) {
-	vmid, ok := o.state.get(workloadID)
+	ref, ok := o.guestFor(workloadID)
 	if !ok {
 		return nil, fmt.Errorf("no LXC for workload %s", workloadID)
 	}
@@ -1479,16 +1628,16 @@ func (o *ProxmoxLXC) VolumeReadCmd(ctx context.Context, workloadID, name, relPat
 	if err != nil {
 		return nil, err
 	}
-	return pct(ctx, "exec", vmid, "--", "cat", host+"/"+relPath), nil
+	return ref.cmd(ctx, "cat", host+"/"+relPath), nil
 }
 
 // LinkAddr returns the LXC's current IP, which consumers re-resolve on their next deploy.
 func (o *ProxmoxLXC) LinkAddr(ctx context.Context, _, targetWorkloadID string, _ EngineKind, port uint32) (string, error) {
-	vmid, ok := o.state.get(targetWorkloadID)
+	ref, ok := o.guestFor(targetWorkloadID)
 	if !ok {
 		return "", fmt.Errorf("no LXC for link target %s", targetWorkloadID)
 	}
-	ip, err := o.lxcIP(ctx, vmid)
+	ip, err := ref.g.IP(ctx, ref.vmid)
 	if err != nil {
 		return "", fmt.Errorf("link target %s has no IP: %w", targetWorkloadID, err)
 	}
@@ -1496,26 +1645,26 @@ func (o *ProxmoxLXC) LinkAddr(ctx context.Context, _, targetWorkloadID string, _
 }
 
 func (o *ProxmoxLXC) DialAddr(ctx context.Context, workloadID string, port uint32) (string, error) {
-	vmid, ok := o.state.get(workloadID)
+	ref, ok := o.guestFor(workloadID)
 	if !ok {
 		return "", fmt.Errorf("no LXC for workload %s", workloadID)
 	}
-	ip, err := o.lxcIP(ctx, vmid)
+	ip, err := ref.g.IP(ctx, ref.vmid)
 	if err != nil {
 		return "", fmt.Errorf("workload %s has no IP: %w", workloadID, err)
 	}
 	return net.JoinHostPort(ip, strconv.FormatUint(uint64(port), 10)), nil
 }
 
-func (o *ProxmoxLXC) waitForIP(ctx context.Context, vmid string) (string, error) {
+func (o *ProxmoxLXC) waitForIP(ctx context.Context, ref guestRef) (string, error) {
 	deadline := time.Now().Add(90 * time.Second)
 	backoff := 250 * time.Millisecond
 	for {
-		if ip, err := o.lxcIP(ctx, vmid); err == nil && ip != "" {
+		if ip, err := ref.g.IP(ctx, ref.vmid); err == nil && ip != "" {
 			return ip, nil
 		}
 		if time.Now().After(deadline) {
-			return "", fmt.Errorf("timed out waiting for LXC %s IP", vmid)
+			return "", fmt.Errorf("timed out waiting for %s IP", ref.label())
 		}
 		select {
 		case <-ctx.Done():
@@ -1526,31 +1675,18 @@ func (o *ProxmoxLXC) waitForIP(ctx context.Context, vmid string) (string, error)
 	}
 }
 
-// lxcIP reads eth0 specifically: `hostname -I` may return an internal Docker bridge.
-func (o *ProxmoxLXC) lxcIP(ctx context.Context, vmid string) (string, error) {
-	out, err := pct(ctx, "exec", vmid, "--", "ip", "-4", "-o", "addr", "show", "eth0").Output()
-	if err != nil {
-		return "", err
-	}
-	m := reEth0Inet.FindSubmatch(out)
-	if m == nil {
-		return "", fmt.Errorf("no IP yet")
-	}
-	return string(m[1]), nil
-}
-
 var reEth0Inet = regexp.MustCompile(`inet\s+(\d+\.\d+\.\d+\.\d+)/`)
 
-func nextVmid(ctx context.Context) (string, error) {
+var nextVmid = func(ctx context.Context) (string, error) {
 	out, err := exec.CommandContext(ctx, "pvesh", "get", "/cluster/nextid").Output()
 	if err != nil {
 		return "", fmt.Errorf("allocate vmid: %w", err)
 	}
-	return strings.TrimSpace(string(out)), nil
-}
-
-func pct(ctx context.Context, args ...string) *exec.Cmd {
-	return exec.CommandContext(ctx, "pct", args...)
+	vmid := strings.TrimSpace(string(out))
+	if !reVmid.MatchString(vmid) {
+		return "", fmt.Errorf("allocate vmid: unexpected reply %q", vmid)
+	}
+	return vmid, nil
 }
 
 func shortID(s string) string {

@@ -123,16 +123,12 @@ func (o *LocalDocker) ImageDigest(ctx context.Context, workloadID, image string)
 
 func (o *ProxmoxLXC) DiskUsage(ctx context.Context) (*agentv1.DiskUsageReport, error) {
 	report := &agentv1.DiskUsageReport{}
-	for _, workloadID := range o.state.projectIDs() {
-		vmid, ok := o.state.get(workloadID)
-		if !ok {
-			continue
-		}
-		if out, err := o.lxcEngine(ctx, workloadID, vmid).Cmd(ctx, "system", "df", "--format", "{{json .}}").Output(); err == nil {
+	for workloadID, ref := range o.trackedGuests() {
+		if out, err := o.guestEngine(ctx, workloadID, ref).Cmd(ctx, "system", "df", "--format", "{{json .}}").Output(); err == nil {
 			parseDockerDF(string(out), report)
 		}
 		// Fixed script with no user input.
-		out, err := pct(ctx, "exec", vmid, "--", "sh", "-c", "du -sb /opt/ownship-volumes/* 2>/dev/null || true").Output()
+		out, err := ref.cmd(ctx, "sh", "-c", "du -sb /opt/ownship-volumes/* 2>/dev/null || true").Output()
 		if err != nil {
 			continue
 		}
@@ -155,12 +151,8 @@ func (o *ProxmoxLXC) DiskUsage(ctx context.Context) (*agentv1.DiskUsageReport, e
 }
 
 func (o *ProxmoxLXC) Prune(ctx context.Context) error {
-	for _, workloadID := range o.state.projectIDs() {
-		vmid, ok := o.state.get(workloadID)
-		if !ok {
-			continue
-		}
-		eng := o.lxcEngine(ctx, workloadID, vmid)
+	for workloadID, ref := range o.trackedGuests() {
+		eng := o.guestEngine(ctx, workloadID, ref)
 		for _, args := range eng.PruneArgs() {
 			_ = eng.Cmd(ctx, args...).Run()
 		}
@@ -169,11 +161,11 @@ func (o *ProxmoxLXC) Prune(ctx context.Context) error {
 }
 
 func (o *ProxmoxLXC) ImageDigest(ctx context.Context, workloadID, image string) (string, error) {
-	vmid, ok := o.state.get(workloadID)
+	ref, ok := o.guestFor(workloadID)
 	if !ok {
 		return "", nil
 	}
-	out, err := o.lxcEngine(ctx, workloadID, vmid).Cmd(ctx, "image", "inspect",
+	out, err := o.guestEngine(ctx, workloadID, ref).Cmd(ctx, "image", "inspect",
 		"--format", "{{join .RepoDigests \"\\n\"}}", "--", image).Output()
 	if err != nil {
 		return "", prettyExecError("image inspect in lxc", out, err)

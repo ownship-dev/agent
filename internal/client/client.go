@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
+	"slices"
 	"strings"
 	"time"
 
@@ -147,7 +148,7 @@ func (c *Client) session(ctx context.Context) error {
 	c.relay.SetEmit(emit)
 
 	// Enqueued first, so Hello is sent first.
-	_ = emit(hello(c.cfg, c.exec.Nodes(ctx), c.exec.Templates(ctx), c.exec.Bridges(ctx), c.exec.LanCAPEM(), c.exec.GPUs(ctx), c.exec.PveVersion(ctx), c.exec.Engines(ctx)))
+	_ = emit(c.helloEvent(ctx))
 	// Lets the control plane reconcile and GC orphans.
 	_ = emit(c.stateEvent(ctx))
 	go c.heartbeat(ctx, emit)
@@ -185,7 +186,7 @@ func (c *Client) session(ctx context.Context) error {
 		if cmd.GetRequestState() != nil {
 			go func() {
 				c.exec.InvalidateCaches()
-				_ = emit(hello(c.cfg, c.exec.Nodes(ctx), c.exec.Templates(ctx), c.exec.Bridges(ctx), c.exec.LanCAPEM(), c.exec.GPUs(ctx), c.exec.PveVersion(ctx), c.exec.Engines(ctx)))
+				_ = emit(c.helloEvent(ctx))
 				_ = emit(c.stateEvent(ctx))
 			}()
 			continue
@@ -273,6 +274,31 @@ func (c *Client) heartbeat(ctx context.Context, emit executors.Emit) {
 		}
 	}
 }
+
+func (c *Client) helloEvent(ctx context.Context) *agentv1.Event {
+	ev := hello(c.cfg, c.exec.Nodes(ctx), c.exec.Templates(ctx), c.exec.Bridges(ctx), c.exec.LanCAPEM(), c.exec.GPUs(ctx), c.exec.PveVersion(ctx), c.exec.Engines(ctx))
+	withVMs(ev.GetHello(), c.exec.VMs(ctx))
+	return ev
+}
+
+// withVMs announces guest_vm only on a capable host, so the control plane never sends a VM
+// to an agent that would build it as something else.
+func withVMs(h *agentv1.Hello, vm executors.VMReport) {
+	h.VmImages = vm.Images
+	h.VmBlockedReason = vm.BlockedReason
+	if vm.Capable {
+		h.Capabilities = append(slices.Clone(h.Capabilities), GuestVMCapability)
+	}
+	if vm.Convert {
+		h.Capabilities = append(slices.Clone(h.Capabilities), GuestConvertCapability)
+	}
+}
+
+// GuestConvertCapability matches GUEST_CONVERT_CAPABILITY in @ownship/core.
+const GuestConvertCapability = "guest_convert"
+
+// GuestVMCapability matches GUEST_VM_CAPABILITY in @ownship/core.
+const GuestVMCapability = "guest_vm"
 
 func hello(cfg config.Config, nodes []*agentv1.NodeInfo, templates []string, bridges []string, lanCA string, gpus []*agentv1.Gpu, pveVersion string, engines []*agentv1.EngineInfo) *agentv1.Event {
 	dockerVersion := ""

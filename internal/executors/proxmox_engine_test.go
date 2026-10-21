@@ -17,7 +17,12 @@ func newTestProxmox(t *testing.T) *ProxmoxLXC {
 	if err != nil {
 		t.Fatal(err)
 	}
-	o := &ProxmoxLXC{state: state, createLocks: newKeyedLocks()}
+	vms, err := loadVMState(filepath.Join(dir, "vm.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	o := &ProxmoxLXC{state: state, vms: vms, createLocks: newKeyedLocks(), baseLocks: newKeyedLocks()}
+	o.vm = newVMGuest(o)
 	o.engines = loadEngineState(filepath.Join(dir, "engines.json"), proxmoxEngines(), nil)
 	return o
 }
@@ -60,7 +65,7 @@ func TestLxcScriptsFollowTheEngine(t *testing.T) {
 
 func TestLxcBuildRunsTheHostStepsInsideTheContainer(t *testing.T) {
 	for _, step := range buildSteps(NewPodmanEngine(), "img", false) {
-		got := strings.Join(lxcStepCmd(context.Background(), "105", "/root/app", step).Args, " ")
+		got := strings.Join(lxcStepCmd(context.Background(), guestRef{lxcGuest{}, "105"}, "/root/app", step).Args, " ")
 		want := `pct exec 105 -- sh -c cd "$1" && shift && exec "$@" sh /root/app ` + strings.Join(step, " ")
 		if got != want {
 			t.Errorf("argv %q, want %q", got, want)

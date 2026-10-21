@@ -37,8 +37,8 @@ func watchVMList(ctx context.Context, onRemoved func()) {
 	ticker := time.NewTicker(vmlistPollInterval)
 	defer ticker.Stop()
 	for {
-		if cur, err := readVMListLXCs(); err == nil {
-			if lxcRemoved(prev, cur) {
+		if cur, err := readVMListGuests(); err == nil {
+			if guestRemoved(prev, cur) {
 				onRemoved()
 			}
 			prev = cur
@@ -51,7 +51,7 @@ func watchVMList(ctx context.Context, onRemoved func()) {
 	}
 }
 
-func readVMListLXCs() (map[string]bool, error) {
+func readVMListGuests() (map[string]bool, error) {
 	data, err := os.ReadFile(vmlistPath)
 	if err != nil {
 		return nil, err
@@ -64,16 +64,17 @@ func readVMListLXCs() (map[string]bool, error) {
 	if err := json.Unmarshal(data, &list); err != nil {
 		return nil, err
 	}
-	lxcs := make(map[string]bool, len(list.IDs))
+	// VMs count too: a VM workload deleted outside Ownship is reported at once like an LXC.
+	guests := make(map[string]bool, len(list.IDs))
 	for id, g := range list.IDs {
-		if g.Type == "lxc" {
-			lxcs[id] = true
+		if g.Type == "lxc" || g.Type == "qemu" {
+			guests[id] = true
 		}
 	}
-	return lxcs, nil
+	return guests, nil
 }
 
-func lxcRemoved(prev, cur map[string]bool) bool {
+func guestRemoved(prev, cur map[string]bool) bool {
 	for id := range prev {
 		if !cur[id] {
 			return true

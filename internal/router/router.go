@@ -23,7 +23,7 @@ const seenCap = 2048
 
 // Capabilities names commands and behaviours added after the original set, announced in Hello.
 // A new live-channel command joins here, or the control plane refuses it.
-var Capabilities = []string{"db_query", "self_update", "adopt", "mongo_typed_json", "uninstall"}
+var Capabilities = []string{"db_query", "self_update", "adopt", "mongo_typed_json", "uninstall", "vm_workloads"}
 
 type Router struct {
 	exec executors.Executor
@@ -154,6 +154,8 @@ func (r *Router) Handle(ctx context.Context, cmd *agentv1.Command, emit executor
 		r.run(ctx, "", emit, func(c context.Context) error {
 			return r.exec.Adopt(c, cmd.GetAdopt(), emit)
 		})
+	case *agentv1.Command_ConvertPrepare, *agentv1.Command_ConvertCommit, *agentv1.Command_ConvertRollback:
+		r.convert(ctx, cmd, emit)
 	case *agentv1.Command_Uninstall:
 		r.uninstall(ctx, cmd.GetUninstall(), emit)
 	case *agentv1.Command_AgentUpdate:
@@ -174,6 +176,32 @@ func (r *Router) Handle(ctx context.Context, cmd *agentv1.Command, emit executor
 	}
 }
 
+// convertExecutor is optional so test executors need not implement it.
+type convertExecutor interface {
+	ConvertPrepare(ctx context.Context, cmd *agentv1.ConvertPrepare, emit executors.Emit) error
+	ConvertCommit(ctx context.Context, cmd *agentv1.ConvertCommit, emit executors.Emit) error
+	ConvertRollback(ctx context.Context, cmd *agentv1.ConvertRollback, emit executors.Emit) error
+}
+
+func (r *Router) convert(ctx context.Context, cmd *agentv1.Command, emit executors.Emit) {
+	c, ok := r.exec.(convertExecutor)
+	if !ok {
+		_ = emit(failure("", fmt.Errorf("this agent can't convert workloads")))
+		return
+	}
+	r.run(ctx, "", emit, func(ctx context.Context) error {
+		switch p := cmd.GetPayload().(type) {
+		case *agentv1.Command_ConvertPrepare:
+			return c.ConvertPrepare(ctx, p.ConvertPrepare, emit)
+		case *agentv1.Command_ConvertCommit:
+			return c.ConvertCommit(ctx, p.ConvertCommit, emit)
+		case *agentv1.Command_ConvertRollback:
+			return c.ConvertRollback(ctx, p.ConvertRollback, emit)
+		}
+		return nil
+	})
+}
+
 // uninstall destroys the workloads in order, then removes the agent and exits. A workload that
 // fails to destroy aborts it, so the agent stays reachable for a retry.
 func (r *Router) uninstall(ctx context.Context, u *agentv1.Uninstall, emit executors.Emit) {
@@ -184,6 +212,14 @@ func (r *Router) uninstall(ctx context.Context, u *agentv1.Uninstall, emit execu
 			return err
 		})
 		if err != nil {
+			return
+		}
+	}
+	// VM templates are not workloads, so the control plane never lists them.
+	if c, ok := r.exec.(interface{ UninstallCleanup(context.Context) error }); ok {
+		if err := c.UninstallCleanup(ctx); err != nil {
+			r.log.Error("uninstall cleanup failed", "err", err)
+			_ = emit(failure("", err))
 			return
 		}
 	}

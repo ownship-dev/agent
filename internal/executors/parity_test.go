@@ -20,6 +20,7 @@ var onlyOneOrchestrator = map[string]string{
 	"Cache":        "in-LXC checkout cache; LocalDocker's build cache lives in the Deployer",
 	"Build":        "build type for the in-LXC build; LocalDocker's build happens in the Deployer",
 	"RegistryAuth": "LocalDocker logs in on the host before Run (deployer.go, HostBuilds)",
+	"VmImage":      "image a Proxmox VM boots from; LocalDocker refuses VM workloads outright",
 }
 
 func TestRunSpecFieldsHaveOrchestratorParity(t *testing.T) {

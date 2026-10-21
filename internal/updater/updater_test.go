@@ -1,6 +1,7 @@
 package updater
 
 import (
+	"context"
 	"crypto/ed25519"
 	"regexp"
 	"strings"
@@ -98,5 +99,15 @@ func TestChecksumFor(t *testing.T) {
 	}
 	if _, err := checksumFor(sums, "agent-darwin-arm64"); err == nil {
 		t.Fatal("expected error for a binary not in the listing")
+	}
+}
+
+// VM workloads rely on this: an agent older than VM support would rebuild a VM as an LXC.
+func TestApplyRefusesEveryDowngrade(t *testing.T) {
+	for _, v := range []string{"1.4.0", "1.5.0"} {
+		err := Apply(context.Background(), "https://example.invalid/agent", "", v, "1.5.0")
+		if err == nil || !strings.Contains(err.Error(), "refusing downgrade") {
+			t.Fatalf("Apply(%s) = %v", v, err)
+		}
 	}
 }

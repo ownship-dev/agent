@@ -114,7 +114,7 @@ func TestProxmoxListIsIncompleteWithAnUntrackedOwnshipLXC(t *testing.T) {
 
 func TestProxmoxListIgnoresUntaggedForeignLXCs(t *testing.T) {
 	o := proxmoxWithLXC(t, "kept", "101")
-	fakeClusterGuests(t, `[{"vmid":101,"type":"lxc","tags":"ownship"},{"vmid":300,"type":"lxc"},{"vmid":301,"type":"qemu","tags":"ownship"}]`, nil)
+	fakeClusterGuests(t, `[{"vmid":101,"type":"lxc","tags":"ownship"},{"vmid":300,"type":"lxc"},{"vmid":301,"type":"qemu","tags":"ownship-base"},{"vmid":302,"type":"qemu"}]`, nil)
 
 	inv, err := o.List(context.Background())
 	if err != nil {
@@ -184,5 +184,52 @@ func TestProxmoxAdoptFailsClosedWhenPveshFails(t *testing.T) {
 	fakeClusterGuests(t, "", errors.New("boom"))
 	if adopted, err := o.Adopt(context.Background(), map[string]string{"db": "102"}); err == nil || len(adopted) > 0 {
 		t.Fatalf("got %v / %v, want an error and nothing adopted", adopted, err)
+	}
+}
+
+// A VM workload is tagged like an LXC one, so a lost vmstate.json is caught the same way.
+func TestProxmoxListIsIncompleteWithAnUntrackedOwnshipVM(t *testing.T) {
+	o := proxmoxWithLXC(t, "kept", "101")
+	fakeClusterGuests(t, `[{"vmid":101,"type":"lxc","tags":"ownship"},{"vmid":400,"type":"qemu","tags":"ownship"}]`, nil)
+	inv, err := o.List(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if inv.Complete {
+		t.Fatalf("got %+v, want incomplete", inv)
+	}
+}
+
+// Base templates carry ownship-base, never ownship: they are not lost workloads.
+func TestBaseTemplatesNeverMakeTheListingIncomplete(t *testing.T) {
+	o := proxmoxWithLXC(t, "kept", "101")
+	fakeClusterGuests(t, `[{"vmid":101,"type":"lxc","tags":"ownship"},{"vmid":9000,"type":"qemu","tags":"ownship-base"}]`, nil)
+	if inv, _ := o.List(context.Background()); !inv.Complete {
+		t.Fatalf("got %+v, want complete", inv)
+	}
+}
+
+func TestGuestGoneByType(t *testing.T) {
+	ctx := context.Background()
+	fakeClusterGuests(t, `[{"vmid":101,"type":"lxc"},{"vmid":102,"type":"qemu"}]`, nil)
+	cases := []struct {
+		kind GuestKind
+		vmid string
+		gone bool
+	}{
+		{GuestLXC, "101", false},
+		{GuestVM, "102", false},
+		{GuestVM, "101", true},  // recycled by an LXC: not our VM
+		{GuestLXC, "102", true}, // recycled by a VM: not our LXC
+		{GuestVM, "103", true},
+	}
+	for _, c := range cases {
+		if got := guestGone(ctx, c.kind, c.vmid); got != c.gone {
+			t.Errorf("guestGone(%v, %s) = %v, want %v", c.kind, c.vmid, got, c.gone)
+		}
+	}
+	fakeClusterGuests(t, "", errors.New("boom"))
+	if guestGone(ctx, GuestVM, "103") {
+		t.Fatal("unknown state must not read as gone")
 	}
 }
