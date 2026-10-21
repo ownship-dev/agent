@@ -234,7 +234,7 @@ type engineSwitcher interface {
 func (d *Deployer) abortEngineSwitch(ctx context.Context, wl string, logLine LogFunc) {
 	if s, ok := d.orch.(engineSwitcher); ok {
 		if err := s.AbortSwitch(ctx, wl); err != nil {
-			logLine(agentv1.LogStream_LOG_STREAM_SYSTEM, "could not restore the previous engine's copy: "+err.Error())
+			logLine(agentv1.LogStream_LOG_STREAM_SYSTEM_WARN, "could not restore the previous engine's copy: "+err.Error())
 		}
 	}
 }
@@ -243,7 +243,7 @@ func (d *Deployer) abortEngineSwitch(ctx context.Context, wl string, logLine Log
 func (d *Deployer) finalizeEngineSwitch(ctx context.Context, wl string, logLine LogFunc) {
 	if s, ok := d.orch.(engineSwitcher); ok {
 		if err := s.FinalizeSwitch(ctx, wl); err != nil {
-			logLine(agentv1.LogStream_LOG_STREAM_SYSTEM, "could not remove the previous engine's copy: "+err.Error())
+			logLine(agentv1.LogStream_LOG_STREAM_SYSTEM_WARN, "could not remove the previous engine's copy: "+err.Error())
 		}
 	}
 }
@@ -272,7 +272,7 @@ func (d *Deployer) authenticateRegistry(ctx context.Context, cmd *agentv1.Deploy
 	if err := dockerLoginHost(ctx, d.hostEngine(cmd), auth); err != nil {
 		return err
 	}
-	logLine(agentv1.LogStream_LOG_STREAM_SYSTEM, "authenticated to registry "+auth.GetHost())
+	logLine(agentv1.LogStream_LOG_STREAM_SYSTEM_OK, "authenticated to registry "+auth.GetHost())
 	return nil
 }
 
@@ -301,7 +301,7 @@ func (d *Deployer) resolveLinks(ctx context.Context, cmd *agentv1.Deploy, wl str
 	for _, link := range cmd.GetLinks() {
 		addr, err := d.orch.LinkAddr(ctx, wl, link.GetTargetWorkloadId(), cmd.GetContainerEngine(), link.GetTargetPort())
 		if err != nil {
-			logLine(agentv1.LogStream_LOG_STREAM_SYSTEM, "link "+link.GetEnvKey()+" skipped: "+err.Error())
+			logLine(agentv1.LogStream_LOG_STREAM_SYSTEM_WARN, "link "+link.GetEnvKey()+" skipped: "+err.Error())
 			continue
 		}
 		env = append(env, &agentv1.EnvEntry{Key: link.GetEnvKey(), Value: addr})
@@ -407,10 +407,10 @@ func (d *Deployer) configureRouting(ctx context.Context, cmd *agentv1.Deploy, wl
 	routeTarget := target.URL
 	if cmd.GetWakeOnRequest() && len(hostnames)+len(lanHosts) > 0 {
 		if err := d.waker.Register(wl, append(append([]string{}, hostnames...), lanHosts...), target.URL, cmd.GetHealth()); err != nil {
-			logLine(agentv1.LogStream_LOG_STREAM_SYSTEM, "wake-on-request disabled: "+err.Error())
+			logLine(agentv1.LogStream_LOG_STREAM_SYSTEM_WARN, "wake-on-request disabled: "+err.Error())
 		} else {
 			routeTarget = d.waker.URL()
-			logLine(agentv1.LogStream_LOG_STREAM_SYSTEM, "wake-on-request active via "+routeTarget)
+			logLine(agentv1.LogStream_LOG_STREAM_SYSTEM_OK, "wake-on-request active via "+routeTarget)
 		}
 	} else {
 		d.waker.Unregister(wl)
@@ -467,7 +467,7 @@ func (d *Deployer) configurePrivateIngress(ctx context.Context, cmd *agentv1.Dep
 				logLine(agentv1.LogStream_LOG_STREAM_SYSTEM, "created a LAN certificate authority for "+lan.GetCaDomain()+"; download it again from the machine to trust it")
 			}
 			for _, h := range lan.GetHostnames() {
-				logLine(agentv1.LogStream_LOG_STREAM_SYSTEM, "LAN https://"+h+" -> "+routeTarget)
+				logLine(agentv1.LogStream_LOG_STREAM_SYSTEM_OK, "LAN https://"+h+" -> "+routeTarget)
 			}
 			url = "https://" + lan.GetHostnames()[0]
 			if p := lan.GetHttpsPort(); p != 0 && p != lanproxy.DefaultPort {
@@ -497,7 +497,7 @@ func (d *Deployer) configurePrivateIngress(ctx context.Context, cmd *agentv1.Dep
 	if err != nil {
 		return "", "", err
 	}
-	logLine(agentv1.LogStream_LOG_STREAM_SYSTEM, "tailnet "+tsURL+" -> "+direct)
+	logLine(agentv1.LogStream_LOG_STREAM_SYSTEM_OK, "tailnet "+tsURL+" -> "+direct)
 	return tsURL, newCA, nil
 }
 
@@ -510,7 +510,7 @@ func (d *Deployer) runPostDeployHook(ctx context.Context, cmd *agentv1.Deploy, w
 	_ = emitLifecycle(emit, id, agentv1.Phase_PHASE_POST_DEPLOY_HOOK, "running post-deploy hook")
 	logLine(agentv1.LogStream_LOG_STREAM_SYSTEM, "post-deploy hook: "+hook)
 	if err := d.runHook(ctx, wl, hook, cmd.GetHooks().GetTimeoutSeconds(), logLine); err != nil {
-		logLine(agentv1.LogStream_LOG_STREAM_SYSTEM, "post-deploy hook failed (deploy stays live): "+err.Error())
+		logLine(agentv1.LogStream_LOG_STREAM_SYSTEM_WARN, "post-deploy hook failed (deploy stays live): "+err.Error())
 	}
 }
 

@@ -178,7 +178,7 @@ func (o *ProxmoxLXC) run(ctx context.Context, kind EngineKind, spec RunSpec) (Ta
 		defer func() {
 			_ = pct(context.Background(), "exec", vmid, "--", "rm", "-f", "/root/.docker/config.json").Run()
 		}()
-		spec.LogLine(agentv1.LogStream_LOG_STREAM_SYSTEM, "authenticated to registry "+spec.RegistryAuth.GetHost())
+		spec.LogLine(agentv1.LogStream_LOG_STREAM_SYSTEM_OK, "authenticated to registry "+spec.RegistryAuth.GetHost())
 	}
 
 	if spec.Compose != nil {
@@ -201,7 +201,7 @@ func (o *ProxmoxLXC) run(ctx context.Context, kind EngineKind, spec RunSpec) (Ta
 	// Re-pull moved tags, but keep the current image if the registry is down.
 	if spec.PullImage {
 		if out, err := eng.Cmd(ctx, "pull", "--", spec.Image).CombinedOutput(); err != nil {
-			spec.LogLine(agentv1.LogStream_LOG_STREAM_SYSTEM,
+			spec.LogLine(agentv1.LogStream_LOG_STREAM_SYSTEM_WARN,
 				"image pull failed, using local copy if present: "+strings.TrimSpace(string(out)))
 		}
 	}
@@ -213,7 +213,7 @@ func (o *ProxmoxLXC) run(ctx context.Context, kind EngineKind, spec RunSpec) (Ta
 		imageUser, err := o.imageUser(ctx, eng, spec.Image)
 		if err != nil {
 			// Fail safe: force non-root even if inspect failed.
-			spec.LogLine(agentv1.LogStream_LOG_STREAM_SYSTEM,
+			spec.LogLine(agentv1.LogStream_LOG_STREAM_SYSTEM_WARN,
 				"image inspect failed, forcing non-root as a fail-safe: "+err.Error())
 			imageUser = ""
 		}
@@ -287,7 +287,7 @@ func (o *ProxmoxLXC) run(ctx context.Context, kind EngineKind, spec RunSpec) (Ta
 	}
 	// Detached ctx so pruning outlives the deploy.
 	go o.pruneImages(context.Background(), eng, spec.WorkloadID, 3)
-	spec.LogLine(agentv1.LogStream_LOG_STREAM_SYSTEM, fmt.Sprintf("running in LXC %s at %s:%d", vmid, ip, spec.Port))
+	spec.LogLine(agentv1.LogStream_LOG_STREAM_SYSTEM_OK, fmt.Sprintf("running in LXC %s at %s:%d", vmid, ip, spec.Port))
 	return Target{URL: fmt.Sprintf("http://%s:%d", ip, spec.Port), LxcID: vmid}, nil
 }
 
@@ -377,7 +377,7 @@ func (o *ProxmoxLXC) runComposeInLXC(ctx context.Context, eng *Engine, vmid stri
 	if err != nil {
 		return Target{}, err
 	}
-	spec.LogLine(agentv1.LogStream_LOG_STREAM_SYSTEM, fmt.Sprintf("compose project up in LXC %s at %s:%d", vmid, ip, spec.Port))
+	spec.LogLine(agentv1.LogStream_LOG_STREAM_SYSTEM_OK, fmt.Sprintf("compose project up in LXC %s at %s:%d", vmid, ip, spec.Port))
 	return Target{URL: fmt.Sprintf("http://%s:%d", ip, spec.Port), LxcID: vmid}, nil
 }
 
@@ -1028,7 +1028,7 @@ func (o *ProxmoxLXC) ensureLXC(ctx context.Context, workloadID, baseTemplate, te
 			}
 			return vmid, nil
 		}
-		logLine(agentv1.LogStream_LOG_STREAM_SYSTEM, "LXC "+vmid+" no longer exists in Proxmox; creating a new one")
+		logLine(agentv1.LogStream_LOG_STREAM_SYSTEM_WARN, "LXC "+vmid+" no longer exists in Proxmox; creating a new one")
 		if err := o.state.remove(workloadID); err != nil {
 			return "", err
 		}
@@ -1388,7 +1388,7 @@ func (o *ProxmoxLXC) applyRootPassword(ctx context.Context, vmid, password strin
 	cmd := pct(ctx, "exec", vmid, "--", "chpasswd")
 	cmd.Stdin = strings.NewReader("root:" + password + "\n")
 	if out, err := cmd.CombinedOutput(); err != nil {
-		logLine(agentv1.LogStream_LOG_STREAM_SYSTEM, "could not set the LXC root password: "+strings.TrimSpace(string(out)))
+		logLine(agentv1.LogStream_LOG_STREAM_SYSTEM_WARN, "could not set the LXC root password: "+strings.TrimSpace(string(out)))
 	}
 }
 

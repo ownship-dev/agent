@@ -120,7 +120,7 @@ func composeGPU(spec RunSpec, g gpuDevices, nvidiaRuntime func() bool) (*compose
 	}
 	nvidia := len(g.Nvidia) > 0 && nvidiaRuntime()
 	if len(g.Nvidia) > 0 && !nvidia {
-		spec.LogLine(agentv1.LogStream_LOG_STREAM_SYSTEM, nvidiaToolkitHint)
+		spec.LogLine(agentv1.LogStream_LOG_STREAM_SYSTEM_WARN, nvidiaToolkitHint)
 	}
 	out := &compose.GPU{Nvidia: nvidia, GroupVideo: g.Kfd}
 	if len(g.Dri) > 0 {

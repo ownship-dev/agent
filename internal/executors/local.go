@@ -210,7 +210,7 @@ func (o *LocalDocker) runOn(ctx context.Context, eng *Engine, spec RunSpec, port
 	// Re-pull moved tags, but keep the current image if the registry is down.
 	if spec.PullImage {
 		if out, err := eng.Cmd(ctx, "pull", "--", spec.Image).CombinedOutput(); err != nil {
-			spec.LogLine(agentv1.LogStream_LOG_STREAM_SYSTEM,
+			spec.LogLine(agentv1.LogStream_LOG_STREAM_SYSTEM_WARN,
 				"image pull failed, using local copy if present: "+strings.TrimSpace(string(out)))
 		}
 	}
@@ -222,7 +222,7 @@ func (o *LocalDocker) runOn(ctx context.Context, eng *Engine, spec RunSpec, port
 		imageUser, err := imageUserLocal(ctx, eng, spec.Image)
 		if err != nil {
 			// Fail safe: force non-root even if inspect failed.
-			spec.LogLine(agentv1.LogStream_LOG_STREAM_SYSTEM,
+			spec.LogLine(agentv1.LogStream_LOG_STREAM_SYSTEM_WARN,
 				"image inspect failed, forcing non-root as a fail-safe: "+err.Error())
 			imageUser = ""
 		}
@@ -299,7 +299,7 @@ func (o *LocalDocker) runOn(ctx context.Context, eng *Engine, spec RunSpec, port
 	if err != nil {
 		return Target{}, err
 	}
-	spec.LogLine(agentv1.LogStream_LOG_STREAM_SYSTEM, "container started on host port "+boundPort)
+	spec.LogLine(agentv1.LogStream_LOG_STREAM_SYSTEM_OK, "container started on host port "+boundPort)
 	// Detached ctx so pruning outlives the deploy.
 	go pruneImages(context.Background(), eng, spec.WorkloadID, 3)
 	return Target{URL: "http://localhost:" + boundPort, ContainerID: containerID}, nil
@@ -412,7 +412,7 @@ func (o *LocalDocker) runCompose(ctx context.Context, eng *Engine, spec RunSpec,
 	if err != nil {
 		return Target{}, err
 	}
-	spec.LogLine(agentv1.LogStream_LOG_STREAM_SYSTEM, "compose project up; primary on host port "+boundPort)
+	spec.LogLine(agentv1.LogStream_LOG_STREAM_SYSTEM_OK, "compose project up; primary on host port "+boundPort)
 	return Target{URL: "http://localhost:" + boundPort, ContainerID: strings.TrimSpace(string(out))}, nil
 }
 

@@ -214,6 +214,10 @@ const (
 	LogStream_LOG_STREAM_STDOUT      LogStream = 1
 	LogStream_LOG_STREAM_STDERR      LogStream = 2
 	LogStream_LOG_STREAM_SYSTEM      LogStream = 3
+	// Agent-written lines with a severity; older receivers show them as plain output.
+	LogStream_LOG_STREAM_SYSTEM_OK    LogStream = 4
+	LogStream_LOG_STREAM_SYSTEM_WARN  LogStream = 5
+	LogStream_LOG_STREAM_SYSTEM_ERROR LogStream = 6
 )
 
 // Enum value maps for LogStream.
@@ -223,12 +227,18 @@ var (
 		1: "LOG_STREAM_STDOUT",
 		2: "LOG_STREAM_STDERR",
 		3: "LOG_STREAM_SYSTEM",
+		4: "LOG_STREAM_SYSTEM_OK",
+		5: "LOG_STREAM_SYSTEM_WARN",
+		6: "LOG_STREAM_SYSTEM_ERROR",
 	}
 	LogStream_value = map[string]int32{
-		"LOG_STREAM_UNSPECIFIED": 0,
-		"LOG_STREAM_STDOUT":      1,
-		"LOG_STREAM_STDERR":      2,
-		"LOG_STREAM_SYSTEM":      3,
+		"LOG_STREAM_UNSPECIFIED":  0,
+		"LOG_STREAM_STDOUT":       1,
+		"LOG_STREAM_STDERR":       2,
+		"LOG_STREAM_SYSTEM":       3,
+		"LOG_STREAM_SYSTEM_OK":    4,
+		"LOG_STREAM_SYSTEM_WARN":  5,
+		"LOG_STREAM_SYSTEM_ERROR": 6,
 	}
 )
 
@@ -7945,12 +7955,15 @@ const file_ownship_agent_v1_agent_proto_rawDesc = "" +
 	"\fPHASE_FAILED\x10\n" +
 	"\x12\x19\n" +
 	"\x15PHASE_PRE_DEPLOY_HOOK\x10\v\x12\x1a\n" +
-	"\x16PHASE_POST_DEPLOY_HOOK\x10\f*l\n" +
+	"\x16PHASE_POST_DEPLOY_HOOK\x10\f*\xbf\x01\n" +
 	"\tLogStream\x12\x1a\n" +
 	"\x16LOG_STREAM_UNSPECIFIED\x10\x00\x12\x15\n" +
 	"\x11LOG_STREAM_STDOUT\x10\x01\x12\x15\n" +
 	"\x11LOG_STREAM_STDERR\x10\x02\x12\x15\n" +
-	"\x11LOG_STREAM_SYSTEM\x10\x03*[\n" +
+	"\x11LOG_STREAM_SYSTEM\x10\x03\x12\x18\n" +
+	"\x14LOG_STREAM_SYSTEM_OK\x10\x04\x12\x1a\n" +
+	"\x16LOG_STREAM_SYSTEM_WARN\x10\x05\x12\x1b\n" +
+	"\x17LOG_STREAM_SYSTEM_ERROR\x10\x06*[\n" +
 	"\tBuildType\x12\x1a\n" +
 	"\x16BUILD_TYPE_UNSPECIFIED\x10\x00\x12\x17\n" +
 	"\x13BUILD_TYPE_NIXPACKS\x10\x01\x12\x19\n" +

@@ -53,7 +53,7 @@ func prepareCompose(src []byte, o compose.Options, logLine LogFunc) ([]byte, err
 	if len(r.Violations) > 0 {
 		lines := make([]string, 0, len(r.Violations))
 		for _, v := range r.Violations {
-			logLine(agentv1.LogStream_LOG_STREAM_SYSTEM, "compose refused: "+v.String())
+			logLine(agentv1.LogStream_LOG_STREAM_SYSTEM_ERROR, "compose refused: "+v.String())
 			lines = append(lines, v.String())
 		}
 		return nil, fmt.Errorf("compose file refused: %s", strings.Join(lines, "; "))

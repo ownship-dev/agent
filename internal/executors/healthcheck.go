@@ -42,7 +42,7 @@ func waitHealthy(ctx context.Context, baseURL string, hc *agentv1.HealthcheckCon
 		if err == nil {
 			resp.Body.Close()
 			if resp.StatusCode >= 200 && resp.StatusCode < 300 {
-				logLine(agentv1.LogStream_LOG_STREAM_SYSTEM, fmt.Sprintf("health check passed (%d %s)", resp.StatusCode, path))
+				logLine(agentv1.LogStream_LOG_STREAM_SYSTEM_OK, fmt.Sprintf("health check passed (%d %s)", resp.StatusCode, path))
 				return nil
 			}
 			lastErr = fmt.Errorf("status %d", resp.StatusCode)

@@ -26,7 +26,7 @@ func gitSync(ctx context.Context, h gitHost, repo *agentv1.RepoSource, dest stri
 		if err := gitUpdate(ctx, h, repo, dest, onLine); err == nil {
 			return nil
 		}
-		onLine(agentv1.LogStream_LOG_STREAM_SYSTEM, "workspace update failed, falling back to fresh clone")
+		onLine(agentv1.LogStream_LOG_STREAM_SYSTEM_WARN, "workspace update failed, falling back to fresh clone")
 	}
 	if err := h.removeAll(ctx, dest); err != nil {
 		return err

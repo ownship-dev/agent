@@ -210,7 +210,7 @@ func (o *ProxmoxLXC) resolveBaseOS(ctx context.Context, id, targetNode string, l
 	}
 
 	if out, err := exec.CommandContext(ctx, "pveam", "update").CombinedOutput(); err != nil {
-		logLine(agentv1.LogStream_LOG_STREAM_SYSTEM, "pveam update failed, continuing with cached index: "+strings.TrimSpace(string(out)))
+		logLine(agentv1.LogStream_LOG_STREAM_SYSTEM_WARN, "pveam update failed, continuing with cached index: "+strings.TrimSpace(string(out)))
 	}
 
 	out, err := exec.CommandContext(ctx, "pveam", "available", "--section", "system").Output()

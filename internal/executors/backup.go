@@ -293,7 +293,7 @@ func (d *Deployer) restoreVolumesFromHints(ctx context.Context, workloadID strin
 		if err != nil {
 			return fmt.Errorf("restore volume %s: %s", hint.GetVolumeName(), firstLine(string(out), err))
 		}
-		logLine(agentv1.LogStream_LOG_STREAM_SYSTEM, "restored volume "+hint.GetVolumeName()+" from backup")
+		logLine(agentv1.LogStream_LOG_STREAM_SYSTEM_OK, "restored volume "+hint.GetVolumeName()+" from backup")
 	}
 	return nil
 }
