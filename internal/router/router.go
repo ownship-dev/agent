@@ -23,11 +23,13 @@ const seenCap = 2048
 
 // Capabilities names commands and behaviours added after the original set, announced in Hello.
 // A new live-channel command joins here, or the control plane refuses it.
-var Capabilities = []string{"db_query", "self_update", "adopt", "mongo_typed_json"}
+var Capabilities = []string{"db_query", "self_update", "adopt", "mongo_typed_json", "uninstall"}
 
 type Router struct {
 	exec executors.Executor
 	log  *slog.Logger
+	// Removes the agent from the machine; unset in tests.
+	Uninstall func() error
 
 	mu   sync.Mutex
 	seen map[string]struct{}
@@ -152,6 +154,8 @@ func (r *Router) Handle(ctx context.Context, cmd *agentv1.Command, emit executor
 		r.run(ctx, "", emit, func(c context.Context) error {
 			return r.exec.Adopt(c, cmd.GetAdopt(), emit)
 		})
+	case *agentv1.Command_Uninstall:
+		r.uninstall(ctx, cmd.GetUninstall(), emit)
 	case *agentv1.Command_AgentUpdate:
 		u := cmd.GetAgentUpdate()
 		if u.GetDownloadUrl() == "" {
@@ -168,6 +172,31 @@ func (r *Router) Handle(ctx context.Context, cmd *agentv1.Command, emit executor
 		r.log.Warn("unhandled command", "id", cmd.GetId())
 		_ = emit(failure("", fmt.Errorf("unhandled command type")))
 	}
+}
+
+// uninstall destroys the workloads in order, then removes the agent and exits. A workload that
+// fails to destroy aborts it, so the agent stays reachable for a retry.
+func (r *Router) uninstall(ctx context.Context, u *agentv1.Uninstall, emit executors.Emit) {
+	for _, id := range u.GetWorkloadIds() {
+		var err error
+		r.run(ctx, "", emit, func(c context.Context) error {
+			err = r.exec.Destroy(c, &agentv1.Destroy{ProjectId: id}, emit)
+			return err
+		})
+		if err != nil {
+			return
+		}
+	}
+	if r.Uninstall == nil {
+		return
+	}
+	if err := r.Uninstall(); err != nil {
+		r.log.Error("uninstall failed", "err", err)
+		_ = emit(failure("", err))
+		return
+	}
+	r.log.Info("uninstalling agent")
+	os.Exit(0)
 }
 
 // selfUpdate installs the latest release from the signed channel the hourly loop uses, so a

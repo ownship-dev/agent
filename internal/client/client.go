@@ -17,6 +17,7 @@ import (
 	agentv1 "github.com/ownship/agent/internal/gen/ownship/agent/v1"
 	"github.com/ownship/agent/internal/hardware"
 	"github.com/ownship/agent/internal/router"
+	"github.com/ownship/agent/internal/uninstall"
 )
 
 const (
@@ -55,7 +56,7 @@ type Client struct {
 }
 
 func New(cfg config.Config, token string, exec executors.Executor, rtl *executors.RuntimeLogs, term *executors.TerminalManager, waker *executors.Waker, relay *executors.Relay, log *slog.Logger) *Client {
-	return &Client{cfg: cfg, token: token, exec: exec, rtl: rtl, term: term, waker: waker, relay: relay, router: router.New(exec, log), log: log, hw: hardware.New()}
+	return &Client{cfg: cfg, token: token, exec: exec, rtl: rtl, term: term, waker: waker, relay: relay, router: newRouter(cfg, exec, log), log: log, hw: hardware.New()}
 }
 
 // Run keeps a stream open until ctx is cancelled, reconnecting with exponential backoff.
@@ -340,4 +341,10 @@ func (c *Client) reportState(ctx context.Context, emit executors.Emit) {
 			return
 		}
 	}
+}
+
+func newRouter(cfg config.Config, exec executors.Executor, log *slog.Logger) *router.Router {
+	r := router.New(exec, log)
+	r.Uninstall = func() error { return uninstall.Run(cfg) }
+	return r
 }

@@ -444,6 +444,7 @@ type Command struct {
 	//	*Command_RelayRequest
 	//	*Command_DbQuery
 	//	*Command_Adopt
+	//	*Command_Uninstall
 	Payload       isCommand_Payload `protobuf_oneof:"payload"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -689,6 +690,15 @@ func (x *Command) GetAdopt() *Adopt {
 	return nil
 }
 
+func (x *Command) GetUninstall() *Uninstall {
+	if x != nil {
+		if x, ok := x.Payload.(*Command_Uninstall); ok {
+			return x.Uninstall
+		}
+	}
+	return nil
+}
+
 type isCommand_Payload interface {
 	isCommand_Payload()
 }
@@ -777,6 +787,10 @@ type Command_Adopt struct {
 	Adopt *Adopt `protobuf:"bytes,33,opt,name=adopt,proto3,oneof"`
 }
 
+type Command_Uninstall struct {
+	Uninstall *Uninstall `protobuf:"bytes,34,opt,name=uninstall,proto3,oneof"`
+}
+
 func (*Command_Deploy) isCommand_Payload() {}
 
 func (*Command_Destroy) isCommand_Payload() {}
@@ -818,6 +832,8 @@ func (*Command_RelayRequest) isCommand_Payload() {}
 func (*Command_DbQuery) isCommand_Payload() {}
 
 func (*Command_Adopt) isCommand_Payload() {}
+
+func (*Command_Uninstall) isCommand_Payload() {}
 
 // The workload->LXC pairs the control plane recorded, sent on hello so an agent whose local
 // map was lost (a reinstall) tracks its workloads again. Idempotent; Docker ignores it.
@@ -865,6 +881,52 @@ func (x *Adopt) GetWorkloads() []*AdoptedWorkload {
 	return nil
 }
 
+// Destroys the listed workloads, then removes the agent, its service and local state from the
+// machine. Last command an agent runs; announced by the "uninstall" capability.
+type Uninstall struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	WorkloadIds   []string               `protobuf:"bytes,1,rep,name=workload_ids,json=workloadIds,proto3" json:"workload_ids,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *Uninstall) Reset() {
+	*x = Uninstall{}
+	mi := &file_ownship_agent_v1_agent_proto_msgTypes[4]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *Uninstall) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*Uninstall) ProtoMessage() {}
+
+func (x *Uninstall) ProtoReflect() protoreflect.Message {
+	mi := &file_ownship_agent_v1_agent_proto_msgTypes[4]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use Uninstall.ProtoReflect.Descriptor instead.
+func (*Uninstall) Descriptor() ([]byte, []int) {
+	return file_ownship_agent_v1_agent_proto_rawDescGZIP(), []int{4}
+}
+
+func (x *Uninstall) GetWorkloadIds() []string {
+	if x != nil {
+		return x.WorkloadIds
+	}
+	return nil
+}
+
 type AdoptedWorkload struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	WorkloadId    string                 `protobuf:"bytes,1,opt,name=workload_id,json=workloadId,proto3" json:"workload_id,omitempty"`
@@ -875,7 +937,7 @@ type AdoptedWorkload struct {
 
 func (x *AdoptedWorkload) Reset() {
 	*x = AdoptedWorkload{}
-	mi := &file_ownship_agent_v1_agent_proto_msgTypes[4]
+	mi := &file_ownship_agent_v1_agent_proto_msgTypes[5]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -887,7 +949,7 @@ func (x *AdoptedWorkload) String() string {
 func (*AdoptedWorkload) ProtoMessage() {}
 
 func (x *AdoptedWorkload) ProtoReflect() protoreflect.Message {
-	mi := &file_ownship_agent_v1_agent_proto_msgTypes[4]
+	mi := &file_ownship_agent_v1_agent_proto_msgTypes[5]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -900,7 +962,7 @@ func (x *AdoptedWorkload) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AdoptedWorkload.ProtoReflect.Descriptor instead.
 func (*AdoptedWorkload) Descriptor() ([]byte, []int) {
-	return file_ownship_agent_v1_agent_proto_rawDescGZIP(), []int{4}
+	return file_ownship_agent_v1_agent_proto_rawDescGZIP(), []int{5}
 }
 
 func (x *AdoptedWorkload) GetWorkloadId() string {
@@ -943,7 +1005,7 @@ type DbQuery struct {
 
 func (x *DbQuery) Reset() {
 	*x = DbQuery{}
-	mi := &file_ownship_agent_v1_agent_proto_msgTypes[5]
+	mi := &file_ownship_agent_v1_agent_proto_msgTypes[6]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -955,7 +1017,7 @@ func (x *DbQuery) String() string {
 func (*DbQuery) ProtoMessage() {}
 
 func (x *DbQuery) ProtoReflect() protoreflect.Message {
-	mi := &file_ownship_agent_v1_agent_proto_msgTypes[5]
+	mi := &file_ownship_agent_v1_agent_proto_msgTypes[6]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -968,7 +1030,7 @@ func (x *DbQuery) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DbQuery.ProtoReflect.Descriptor instead.
 func (*DbQuery) Descriptor() ([]byte, []int) {
-	return file_ownship_agent_v1_agent_proto_rawDescGZIP(), []int{5}
+	return file_ownship_agent_v1_agent_proto_rawDescGZIP(), []int{6}
 }
 
 func (x *DbQuery) GetRequestId() string {
@@ -1060,7 +1122,7 @@ type DbStatement struct {
 
 func (x *DbStatement) Reset() {
 	*x = DbStatement{}
-	mi := &file_ownship_agent_v1_agent_proto_msgTypes[6]
+	mi := &file_ownship_agent_v1_agent_proto_msgTypes[7]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1072,7 +1134,7 @@ func (x *DbStatement) String() string {
 func (*DbStatement) ProtoMessage() {}
 
 func (x *DbStatement) ProtoReflect() protoreflect.Message {
-	mi := &file_ownship_agent_v1_agent_proto_msgTypes[6]
+	mi := &file_ownship_agent_v1_agent_proto_msgTypes[7]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1085,7 +1147,7 @@ func (x *DbStatement) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DbStatement.ProtoReflect.Descriptor instead.
 func (*DbStatement) Descriptor() ([]byte, []int) {
-	return file_ownship_agent_v1_agent_proto_rawDescGZIP(), []int{6}
+	return file_ownship_agent_v1_agent_proto_rawDescGZIP(), []int{7}
 }
 
 func (x *DbStatement) GetSql() string {
@@ -1120,7 +1182,7 @@ type DbValue struct {
 
 func (x *DbValue) Reset() {
 	*x = DbValue{}
-	mi := &file_ownship_agent_v1_agent_proto_msgTypes[7]
+	mi := &file_ownship_agent_v1_agent_proto_msgTypes[8]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1132,7 +1194,7 @@ func (x *DbValue) String() string {
 func (*DbValue) ProtoMessage() {}
 
 func (x *DbValue) ProtoReflect() protoreflect.Message {
-	mi := &file_ownship_agent_v1_agent_proto_msgTypes[7]
+	mi := &file_ownship_agent_v1_agent_proto_msgTypes[8]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1145,7 +1207,7 @@ func (x *DbValue) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DbValue.ProtoReflect.Descriptor instead.
 func (*DbValue) Descriptor() ([]byte, []int) {
-	return file_ownship_agent_v1_agent_proto_rawDescGZIP(), []int{7}
+	return file_ownship_agent_v1_agent_proto_rawDescGZIP(), []int{8}
 }
 
 func (x *DbValue) GetNull() bool {
@@ -1177,7 +1239,7 @@ type ListVolumeFiles struct {
 
 func (x *ListVolumeFiles) Reset() {
 	*x = ListVolumeFiles{}
-	mi := &file_ownship_agent_v1_agent_proto_msgTypes[8]
+	mi := &file_ownship_agent_v1_agent_proto_msgTypes[9]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1189,7 +1251,7 @@ func (x *ListVolumeFiles) String() string {
 func (*ListVolumeFiles) ProtoMessage() {}
 
 func (x *ListVolumeFiles) ProtoReflect() protoreflect.Message {
-	mi := &file_ownship_agent_v1_agent_proto_msgTypes[8]
+	mi := &file_ownship_agent_v1_agent_proto_msgTypes[9]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1202,7 +1264,7 @@ func (x *ListVolumeFiles) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListVolumeFiles.ProtoReflect.Descriptor instead.
 func (*ListVolumeFiles) Descriptor() ([]byte, []int) {
-	return file_ownship_agent_v1_agent_proto_rawDescGZIP(), []int{8}
+	return file_ownship_agent_v1_agent_proto_rawDescGZIP(), []int{9}
 }
 
 func (x *ListVolumeFiles) GetRequestId() string {
@@ -1245,7 +1307,7 @@ type ReadVolumeFile struct {
 
 func (x *ReadVolumeFile) Reset() {
 	*x = ReadVolumeFile{}
-	mi := &file_ownship_agent_v1_agent_proto_msgTypes[9]
+	mi := &file_ownship_agent_v1_agent_proto_msgTypes[10]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1257,7 +1319,7 @@ func (x *ReadVolumeFile) String() string {
 func (*ReadVolumeFile) ProtoMessage() {}
 
 func (x *ReadVolumeFile) ProtoReflect() protoreflect.Message {
-	mi := &file_ownship_agent_v1_agent_proto_msgTypes[9]
+	mi := &file_ownship_agent_v1_agent_proto_msgTypes[10]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1270,7 +1332,7 @@ func (x *ReadVolumeFile) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ReadVolumeFile.ProtoReflect.Descriptor instead.
 func (*ReadVolumeFile) Descriptor() ([]byte, []int) {
-	return file_ownship_agent_v1_agent_proto_rawDescGZIP(), []int{9}
+	return file_ownship_agent_v1_agent_proto_rawDescGZIP(), []int{10}
 }
 
 func (x *ReadVolumeFile) GetRequestId() string {
@@ -1323,7 +1385,7 @@ type S3Target struct {
 
 func (x *S3Target) Reset() {
 	*x = S3Target{}
-	mi := &file_ownship_agent_v1_agent_proto_msgTypes[10]
+	mi := &file_ownship_agent_v1_agent_proto_msgTypes[11]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1335,7 +1397,7 @@ func (x *S3Target) String() string {
 func (*S3Target) ProtoMessage() {}
 
 func (x *S3Target) ProtoReflect() protoreflect.Message {
-	mi := &file_ownship_agent_v1_agent_proto_msgTypes[10]
+	mi := &file_ownship_agent_v1_agent_proto_msgTypes[11]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1348,7 +1410,7 @@ func (x *S3Target) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use S3Target.ProtoReflect.Descriptor instead.
 func (*S3Target) Descriptor() ([]byte, []int) {
-	return file_ownship_agent_v1_agent_proto_rawDescGZIP(), []int{10}
+	return file_ownship_agent_v1_agent_proto_rawDescGZIP(), []int{11}
 }
 
 func (x *S3Target) GetEndpoint() string {
@@ -1419,7 +1481,7 @@ type ServiceDump struct {
 
 func (x *ServiceDump) Reset() {
 	*x = ServiceDump{}
-	mi := &file_ownship_agent_v1_agent_proto_msgTypes[11]
+	mi := &file_ownship_agent_v1_agent_proto_msgTypes[12]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1431,7 +1493,7 @@ func (x *ServiceDump) String() string {
 func (*ServiceDump) ProtoMessage() {}
 
 func (x *ServiceDump) ProtoReflect() protoreflect.Message {
-	mi := &file_ownship_agent_v1_agent_proto_msgTypes[11]
+	mi := &file_ownship_agent_v1_agent_proto_msgTypes[12]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1444,7 +1506,7 @@ func (x *ServiceDump) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ServiceDump.ProtoReflect.Descriptor instead.
 func (*ServiceDump) Descriptor() ([]byte, []int) {
-	return file_ownship_agent_v1_agent_proto_rawDescGZIP(), []int{11}
+	return file_ownship_agent_v1_agent_proto_rawDescGZIP(), []int{12}
 }
 
 func (x *ServiceDump) GetEngine() string {
@@ -1480,7 +1542,7 @@ type Backup struct {
 
 func (x *Backup) Reset() {
 	*x = Backup{}
-	mi := &file_ownship_agent_v1_agent_proto_msgTypes[12]
+	mi := &file_ownship_agent_v1_agent_proto_msgTypes[13]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1492,7 +1554,7 @@ func (x *Backup) String() string {
 func (*Backup) ProtoMessage() {}
 
 func (x *Backup) ProtoReflect() protoreflect.Message {
-	mi := &file_ownship_agent_v1_agent_proto_msgTypes[12]
+	mi := &file_ownship_agent_v1_agent_proto_msgTypes[13]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1505,7 +1567,7 @@ func (x *Backup) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Backup.ProtoReflect.Descriptor instead.
 func (*Backup) Descriptor() ([]byte, []int) {
-	return file_ownship_agent_v1_agent_proto_rawDescGZIP(), []int{12}
+	return file_ownship_agent_v1_agent_proto_rawDescGZIP(), []int{13}
 }
 
 func (x *Backup) GetBackupId() string {
@@ -1576,7 +1638,7 @@ type RestoreBackup struct {
 
 func (x *RestoreBackup) Reset() {
 	*x = RestoreBackup{}
-	mi := &file_ownship_agent_v1_agent_proto_msgTypes[13]
+	mi := &file_ownship_agent_v1_agent_proto_msgTypes[14]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1588,7 +1650,7 @@ func (x *RestoreBackup) String() string {
 func (*RestoreBackup) ProtoMessage() {}
 
 func (x *RestoreBackup) ProtoReflect() protoreflect.Message {
-	mi := &file_ownship_agent_v1_agent_proto_msgTypes[13]
+	mi := &file_ownship_agent_v1_agent_proto_msgTypes[14]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1601,7 +1663,7 @@ func (x *RestoreBackup) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RestoreBackup.ProtoReflect.Descriptor instead.
 func (*RestoreBackup) Descriptor() ([]byte, []int) {
-	return file_ownship_agent_v1_agent_proto_rawDescGZIP(), []int{13}
+	return file_ownship_agent_v1_agent_proto_rawDescGZIP(), []int{14}
 }
 
 func (x *RestoreBackup) GetBackupId() string {
@@ -1665,7 +1727,7 @@ type DeleteBackup struct {
 
 func (x *DeleteBackup) Reset() {
 	*x = DeleteBackup{}
-	mi := &file_ownship_agent_v1_agent_proto_msgTypes[14]
+	mi := &file_ownship_agent_v1_agent_proto_msgTypes[15]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1677,7 +1739,7 @@ func (x *DeleteBackup) String() string {
 func (*DeleteBackup) ProtoMessage() {}
 
 func (x *DeleteBackup) ProtoReflect() protoreflect.Message {
-	mi := &file_ownship_agent_v1_agent_proto_msgTypes[14]
+	mi := &file_ownship_agent_v1_agent_proto_msgTypes[15]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1690,7 +1752,7 @@ func (x *DeleteBackup) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteBackup.ProtoReflect.Descriptor instead.
 func (*DeleteBackup) Descriptor() ([]byte, []int) {
-	return file_ownship_agent_v1_agent_proto_rawDescGZIP(), []int{14}
+	return file_ownship_agent_v1_agent_proto_rawDescGZIP(), []int{15}
 }
 
 func (x *DeleteBackup) GetBackupId() string {
@@ -1723,7 +1785,7 @@ type DiskUsage struct {
 
 func (x *DiskUsage) Reset() {
 	*x = DiskUsage{}
-	mi := &file_ownship_agent_v1_agent_proto_msgTypes[15]
+	mi := &file_ownship_agent_v1_agent_proto_msgTypes[16]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1735,7 +1797,7 @@ func (x *DiskUsage) String() string {
 func (*DiskUsage) ProtoMessage() {}
 
 func (x *DiskUsage) ProtoReflect() protoreflect.Message {
-	mi := &file_ownship_agent_v1_agent_proto_msgTypes[15]
+	mi := &file_ownship_agent_v1_agent_proto_msgTypes[16]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1748,7 +1810,7 @@ func (x *DiskUsage) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DiskUsage.ProtoReflect.Descriptor instead.
 func (*DiskUsage) Descriptor() ([]byte, []int) {
-	return file_ownship_agent_v1_agent_proto_rawDescGZIP(), []int{15}
+	return file_ownship_agent_v1_agent_proto_rawDescGZIP(), []int{16}
 }
 
 // Reclaims unused images and build cache. NEVER touches volumes.
@@ -1760,7 +1822,7 @@ type Prune struct {
 
 func (x *Prune) Reset() {
 	*x = Prune{}
-	mi := &file_ownship_agent_v1_agent_proto_msgTypes[16]
+	mi := &file_ownship_agent_v1_agent_proto_msgTypes[17]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1772,7 +1834,7 @@ func (x *Prune) String() string {
 func (*Prune) ProtoMessage() {}
 
 func (x *Prune) ProtoReflect() protoreflect.Message {
-	mi := &file_ownship_agent_v1_agent_proto_msgTypes[16]
+	mi := &file_ownship_agent_v1_agent_proto_msgTypes[17]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1785,7 +1847,7 @@ func (x *Prune) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Prune.ProtoReflect.Descriptor instead.
 func (*Prune) Descriptor() ([]byte, []int) {
-	return file_ownship_agent_v1_agent_proto_rawDescGZIP(), []int{16}
+	return file_ownship_agent_v1_agent_proto_rawDescGZIP(), []int{17}
 }
 
 // Asks whether a newer image exists for this workload's tag: the agent reads
@@ -1802,7 +1864,7 @@ type CheckImageUpdate struct {
 
 func (x *CheckImageUpdate) Reset() {
 	*x = CheckImageUpdate{}
-	mi := &file_ownship_agent_v1_agent_proto_msgTypes[17]
+	mi := &file_ownship_agent_v1_agent_proto_msgTypes[18]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1814,7 +1876,7 @@ func (x *CheckImageUpdate) String() string {
 func (*CheckImageUpdate) ProtoMessage() {}
 
 func (x *CheckImageUpdate) ProtoReflect() protoreflect.Message {
-	mi := &file_ownship_agent_v1_agent_proto_msgTypes[17]
+	mi := &file_ownship_agent_v1_agent_proto_msgTypes[18]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1827,7 +1889,7 @@ func (x *CheckImageUpdate) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CheckImageUpdate.ProtoReflect.Descriptor instead.
 func (*CheckImageUpdate) Descriptor() ([]byte, []int) {
-	return file_ownship_agent_v1_agent_proto_rawDescGZIP(), []int{17}
+	return file_ownship_agent_v1_agent_proto_rawDescGZIP(), []int{18}
 }
 
 func (x *CheckImageUpdate) GetProjectId() string {
@@ -1861,7 +1923,7 @@ type RequestState struct {
 
 func (x *RequestState) Reset() {
 	*x = RequestState{}
-	mi := &file_ownship_agent_v1_agent_proto_msgTypes[18]
+	mi := &file_ownship_agent_v1_agent_proto_msgTypes[19]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1873,7 +1935,7 @@ func (x *RequestState) String() string {
 func (*RequestState) ProtoMessage() {}
 
 func (x *RequestState) ProtoReflect() protoreflect.Message {
-	mi := &file_ownship_agent_v1_agent_proto_msgTypes[18]
+	mi := &file_ownship_agent_v1_agent_proto_msgTypes[19]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1886,7 +1948,7 @@ func (x *RequestState) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RequestState.ProtoReflect.Descriptor instead.
 func (*RequestState) Descriptor() ([]byte, []int) {
-	return file_ownship_agent_v1_agent_proto_rawDescGZIP(), []int{18}
+	return file_ownship_agent_v1_agent_proto_rawDescGZIP(), []int{19}
 }
 
 type Sleep struct {
@@ -1901,7 +1963,7 @@ type Sleep struct {
 
 func (x *Sleep) Reset() {
 	*x = Sleep{}
-	mi := &file_ownship_agent_v1_agent_proto_msgTypes[19]
+	mi := &file_ownship_agent_v1_agent_proto_msgTypes[20]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1913,7 +1975,7 @@ func (x *Sleep) String() string {
 func (*Sleep) ProtoMessage() {}
 
 func (x *Sleep) ProtoReflect() protoreflect.Message {
-	mi := &file_ownship_agent_v1_agent_proto_msgTypes[19]
+	mi := &file_ownship_agent_v1_agent_proto_msgTypes[20]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1926,7 +1988,7 @@ func (x *Sleep) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Sleep.ProtoReflect.Descriptor instead.
 func (*Sleep) Descriptor() ([]byte, []int) {
-	return file_ownship_agent_v1_agent_proto_rawDescGZIP(), []int{19}
+	return file_ownship_agent_v1_agent_proto_rawDescGZIP(), []int{20}
 }
 
 func (x *Sleep) GetProjectId() string {
@@ -1956,7 +2018,7 @@ type WakerConfig struct {
 
 func (x *WakerConfig) Reset() {
 	*x = WakerConfig{}
-	mi := &file_ownship_agent_v1_agent_proto_msgTypes[20]
+	mi := &file_ownship_agent_v1_agent_proto_msgTypes[21]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1968,7 +2030,7 @@ func (x *WakerConfig) String() string {
 func (*WakerConfig) ProtoMessage() {}
 
 func (x *WakerConfig) ProtoReflect() protoreflect.Message {
-	mi := &file_ownship_agent_v1_agent_proto_msgTypes[20]
+	mi := &file_ownship_agent_v1_agent_proto_msgTypes[21]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1981,7 +2043,7 @@ func (x *WakerConfig) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use WakerConfig.ProtoReflect.Descriptor instead.
 func (*WakerConfig) Descriptor() ([]byte, []int) {
-	return file_ownship_agent_v1_agent_proto_rawDescGZIP(), []int{20}
+	return file_ownship_agent_v1_agent_proto_rawDescGZIP(), []int{21}
 }
 
 func (x *WakerConfig) GetEnabled() bool {
@@ -2014,7 +2076,7 @@ type Wake struct {
 
 func (x *Wake) Reset() {
 	*x = Wake{}
-	mi := &file_ownship_agent_v1_agent_proto_msgTypes[21]
+	mi := &file_ownship_agent_v1_agent_proto_msgTypes[22]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2026,7 +2088,7 @@ func (x *Wake) String() string {
 func (*Wake) ProtoMessage() {}
 
 func (x *Wake) ProtoReflect() protoreflect.Message {
-	mi := &file_ownship_agent_v1_agent_proto_msgTypes[21]
+	mi := &file_ownship_agent_v1_agent_proto_msgTypes[22]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2039,7 +2101,7 @@ func (x *Wake) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Wake.ProtoReflect.Descriptor instead.
 func (*Wake) Descriptor() ([]byte, []int) {
-	return file_ownship_agent_v1_agent_proto_rawDescGZIP(), []int{21}
+	return file_ownship_agent_v1_agent_proto_rawDescGZIP(), []int{22}
 }
 
 func (x *Wake) GetProjectId() string {
@@ -2062,7 +2124,7 @@ type RunCommand struct {
 
 func (x *RunCommand) Reset() {
 	*x = RunCommand{}
-	mi := &file_ownship_agent_v1_agent_proto_msgTypes[22]
+	mi := &file_ownship_agent_v1_agent_proto_msgTypes[23]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2074,7 +2136,7 @@ func (x *RunCommand) String() string {
 func (*RunCommand) ProtoMessage() {}
 
 func (x *RunCommand) ProtoReflect() protoreflect.Message {
-	mi := &file_ownship_agent_v1_agent_proto_msgTypes[22]
+	mi := &file_ownship_agent_v1_agent_proto_msgTypes[23]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2087,7 +2149,7 @@ func (x *RunCommand) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RunCommand.ProtoReflect.Descriptor instead.
 func (*RunCommand) Descriptor() ([]byte, []int) {
-	return file_ownship_agent_v1_agent_proto_rawDescGZIP(), []int{22}
+	return file_ownship_agent_v1_agent_proto_rawDescGZIP(), []int{23}
 }
 
 func (x *RunCommand) GetRunId() string {
@@ -2143,7 +2205,7 @@ type TerminalInput struct {
 
 func (x *TerminalInput) Reset() {
 	*x = TerminalInput{}
-	mi := &file_ownship_agent_v1_agent_proto_msgTypes[23]
+	mi := &file_ownship_agent_v1_agent_proto_msgTypes[24]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2155,7 +2217,7 @@ func (x *TerminalInput) String() string {
 func (*TerminalInput) ProtoMessage() {}
 
 func (x *TerminalInput) ProtoReflect() protoreflect.Message {
-	mi := &file_ownship_agent_v1_agent_proto_msgTypes[23]
+	mi := &file_ownship_agent_v1_agent_proto_msgTypes[24]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2168,7 +2230,7 @@ func (x *TerminalInput) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use TerminalInput.ProtoReflect.Descriptor instead.
 func (*TerminalInput) Descriptor() ([]byte, []int) {
-	return file_ownship_agent_v1_agent_proto_rawDescGZIP(), []int{23}
+	return file_ownship_agent_v1_agent_proto_rawDescGZIP(), []int{24}
 }
 
 func (x *TerminalInput) GetSessionId() string {
@@ -2248,7 +2310,7 @@ type TerminalExec struct {
 
 func (x *TerminalExec) Reset() {
 	*x = TerminalExec{}
-	mi := &file_ownship_agent_v1_agent_proto_msgTypes[24]
+	mi := &file_ownship_agent_v1_agent_proto_msgTypes[25]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2260,7 +2322,7 @@ func (x *TerminalExec) String() string {
 func (*TerminalExec) ProtoMessage() {}
 
 func (x *TerminalExec) ProtoReflect() protoreflect.Message {
-	mi := &file_ownship_agent_v1_agent_proto_msgTypes[24]
+	mi := &file_ownship_agent_v1_agent_proto_msgTypes[25]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2273,7 +2335,7 @@ func (x *TerminalExec) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use TerminalExec.ProtoReflect.Descriptor instead.
 func (*TerminalExec) Descriptor() ([]byte, []int) {
-	return file_ownship_agent_v1_agent_proto_rawDescGZIP(), []int{24}
+	return file_ownship_agent_v1_agent_proto_rawDescGZIP(), []int{25}
 }
 
 func (x *TerminalExec) GetServiceId() string {
@@ -2375,7 +2437,7 @@ type Deploy struct {
 
 func (x *Deploy) Reset() {
 	*x = Deploy{}
-	mi := &file_ownship_agent_v1_agent_proto_msgTypes[25]
+	mi := &file_ownship_agent_v1_agent_proto_msgTypes[26]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2387,7 +2449,7 @@ func (x *Deploy) String() string {
 func (*Deploy) ProtoMessage() {}
 
 func (x *Deploy) ProtoReflect() protoreflect.Message {
-	mi := &file_ownship_agent_v1_agent_proto_msgTypes[25]
+	mi := &file_ownship_agent_v1_agent_proto_msgTypes[26]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2400,7 +2462,7 @@ func (x *Deploy) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Deploy.ProtoReflect.Descriptor instead.
 func (*Deploy) Descriptor() ([]byte, []int) {
-	return file_ownship_agent_v1_agent_proto_rawDescGZIP(), []int{25}
+	return file_ownship_agent_v1_agent_proto_rawDescGZIP(), []int{26}
 }
 
 func (x *Deploy) GetDeploymentId() string {
@@ -2639,7 +2701,7 @@ type ComposeConfig struct {
 
 func (x *ComposeConfig) Reset() {
 	*x = ComposeConfig{}
-	mi := &file_ownship_agent_v1_agent_proto_msgTypes[26]
+	mi := &file_ownship_agent_v1_agent_proto_msgTypes[27]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2651,7 +2713,7 @@ func (x *ComposeConfig) String() string {
 func (*ComposeConfig) ProtoMessage() {}
 
 func (x *ComposeConfig) ProtoReflect() protoreflect.Message {
-	mi := &file_ownship_agent_v1_agent_proto_msgTypes[26]
+	mi := &file_ownship_agent_v1_agent_proto_msgTypes[27]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2664,7 +2726,7 @@ func (x *ComposeConfig) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ComposeConfig.ProtoReflect.Descriptor instead.
 func (*ComposeConfig) Descriptor() ([]byte, []int) {
-	return file_ownship_agent_v1_agent_proto_rawDescGZIP(), []int{26}
+	return file_ownship_agent_v1_agent_proto_rawDescGZIP(), []int{27}
 }
 
 func (x *ComposeConfig) GetPath() string {
@@ -2702,7 +2764,7 @@ type LanTarget struct {
 
 func (x *LanTarget) Reset() {
 	*x = LanTarget{}
-	mi := &file_ownship_agent_v1_agent_proto_msgTypes[27]
+	mi := &file_ownship_agent_v1_agent_proto_msgTypes[28]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2714,7 +2776,7 @@ func (x *LanTarget) String() string {
 func (*LanTarget) ProtoMessage() {}
 
 func (x *LanTarget) ProtoReflect() protoreflect.Message {
-	mi := &file_ownship_agent_v1_agent_proto_msgTypes[27]
+	mi := &file_ownship_agent_v1_agent_proto_msgTypes[28]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2727,7 +2789,7 @@ func (x *LanTarget) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use LanTarget.ProtoReflect.Descriptor instead.
 func (*LanTarget) Descriptor() ([]byte, []int) {
-	return file_ownship_agent_v1_agent_proto_rawDescGZIP(), []int{27}
+	return file_ownship_agent_v1_agent_proto_rawDescGZIP(), []int{28}
 }
 
 func (x *LanTarget) GetHostnames() []string {
@@ -2762,7 +2824,7 @@ type TailscaleTarget struct {
 
 func (x *TailscaleTarget) Reset() {
 	*x = TailscaleTarget{}
-	mi := &file_ownship_agent_v1_agent_proto_msgTypes[28]
+	mi := &file_ownship_agent_v1_agent_proto_msgTypes[29]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2774,7 +2836,7 @@ func (x *TailscaleTarget) String() string {
 func (*TailscaleTarget) ProtoMessage() {}
 
 func (x *TailscaleTarget) ProtoReflect() protoreflect.Message {
-	mi := &file_ownship_agent_v1_agent_proto_msgTypes[28]
+	mi := &file_ownship_agent_v1_agent_proto_msgTypes[29]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2787,7 +2849,7 @@ func (x *TailscaleTarget) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use TailscaleTarget.ProtoReflect.Descriptor instead.
 func (*TailscaleTarget) Descriptor() ([]byte, []int) {
-	return file_ownship_agent_v1_agent_proto_rawDescGZIP(), []int{28}
+	return file_ownship_agent_v1_agent_proto_rawDescGZIP(), []int{29}
 }
 
 func (x *TailscaleTarget) GetHostname() string {
@@ -2815,7 +2877,7 @@ type DeployHooks struct {
 
 func (x *DeployHooks) Reset() {
 	*x = DeployHooks{}
-	mi := &file_ownship_agent_v1_agent_proto_msgTypes[29]
+	mi := &file_ownship_agent_v1_agent_proto_msgTypes[30]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2827,7 +2889,7 @@ func (x *DeployHooks) String() string {
 func (*DeployHooks) ProtoMessage() {}
 
 func (x *DeployHooks) ProtoReflect() protoreflect.Message {
-	mi := &file_ownship_agent_v1_agent_proto_msgTypes[29]
+	mi := &file_ownship_agent_v1_agent_proto_msgTypes[30]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2840,7 +2902,7 @@ func (x *DeployHooks) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeployHooks.ProtoReflect.Descriptor instead.
 func (*DeployHooks) Descriptor() ([]byte, []int) {
-	return file_ownship_agent_v1_agent_proto_rawDescGZIP(), []int{29}
+	return file_ownship_agent_v1_agent_proto_rawDescGZIP(), []int{30}
 }
 
 func (x *DeployHooks) GetPreDeploy() string {
@@ -2880,7 +2942,7 @@ type NetworkConfig struct {
 
 func (x *NetworkConfig) Reset() {
 	*x = NetworkConfig{}
-	mi := &file_ownship_agent_v1_agent_proto_msgTypes[30]
+	mi := &file_ownship_agent_v1_agent_proto_msgTypes[31]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2892,7 +2954,7 @@ func (x *NetworkConfig) String() string {
 func (*NetworkConfig) ProtoMessage() {}
 
 func (x *NetworkConfig) ProtoReflect() protoreflect.Message {
-	mi := &file_ownship_agent_v1_agent_proto_msgTypes[30]
+	mi := &file_ownship_agent_v1_agent_proto_msgTypes[31]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2905,7 +2967,7 @@ func (x *NetworkConfig) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use NetworkConfig.ProtoReflect.Descriptor instead.
 func (*NetworkConfig) Descriptor() ([]byte, []int) {
-	return file_ownship_agent_v1_agent_proto_rawDescGZIP(), []int{30}
+	return file_ownship_agent_v1_agent_proto_rawDescGZIP(), []int{31}
 }
 
 func (x *NetworkConfig) GetMode() string {
@@ -2957,7 +3019,7 @@ type RestoreHint struct {
 
 func (x *RestoreHint) Reset() {
 	*x = RestoreHint{}
-	mi := &file_ownship_agent_v1_agent_proto_msgTypes[31]
+	mi := &file_ownship_agent_v1_agent_proto_msgTypes[32]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2969,7 +3031,7 @@ func (x *RestoreHint) String() string {
 func (*RestoreHint) ProtoMessage() {}
 
 func (x *RestoreHint) ProtoReflect() protoreflect.Message {
-	mi := &file_ownship_agent_v1_agent_proto_msgTypes[31]
+	mi := &file_ownship_agent_v1_agent_proto_msgTypes[32]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2982,7 +3044,7 @@ func (x *RestoreHint) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RestoreHint.ProtoReflect.Descriptor instead.
 func (*RestoreHint) Descriptor() ([]byte, []int) {
-	return file_ownship_agent_v1_agent_proto_rawDescGZIP(), []int{31}
+	return file_ownship_agent_v1_agent_proto_rawDescGZIP(), []int{32}
 }
 
 func (x *RestoreHint) GetVolumeName() string {
@@ -3023,7 +3085,7 @@ type BasicAuth struct {
 
 func (x *BasicAuth) Reset() {
 	*x = BasicAuth{}
-	mi := &file_ownship_agent_v1_agent_proto_msgTypes[32]
+	mi := &file_ownship_agent_v1_agent_proto_msgTypes[33]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3035,7 +3097,7 @@ func (x *BasicAuth) String() string {
 func (*BasicAuth) ProtoMessage() {}
 
 func (x *BasicAuth) ProtoReflect() protoreflect.Message {
-	mi := &file_ownship_agent_v1_agent_proto_msgTypes[32]
+	mi := &file_ownship_agent_v1_agent_proto_msgTypes[33]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3048,7 +3110,7 @@ func (x *BasicAuth) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use BasicAuth.ProtoReflect.Descriptor instead.
 func (*BasicAuth) Descriptor() ([]byte, []int) {
-	return file_ownship_agent_v1_agent_proto_rawDescGZIP(), []int{32}
+	return file_ownship_agent_v1_agent_proto_rawDescGZIP(), []int{33}
 }
 
 func (x *BasicAuth) GetUser() string {
@@ -3076,7 +3138,7 @@ type RegistryAuth struct {
 
 func (x *RegistryAuth) Reset() {
 	*x = RegistryAuth{}
-	mi := &file_ownship_agent_v1_agent_proto_msgTypes[33]
+	mi := &file_ownship_agent_v1_agent_proto_msgTypes[34]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3088,7 +3150,7 @@ func (x *RegistryAuth) String() string {
 func (*RegistryAuth) ProtoMessage() {}
 
 func (x *RegistryAuth) ProtoReflect() protoreflect.Message {
-	mi := &file_ownship_agent_v1_agent_proto_msgTypes[33]
+	mi := &file_ownship_agent_v1_agent_proto_msgTypes[34]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3101,7 +3163,7 @@ func (x *RegistryAuth) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RegistryAuth.ProtoReflect.Descriptor instead.
 func (*RegistryAuth) Descriptor() ([]byte, []int) {
-	return file_ownship_agent_v1_agent_proto_rawDescGZIP(), []int{33}
+	return file_ownship_agent_v1_agent_proto_rawDescGZIP(), []int{34}
 }
 
 func (x *RegistryAuth) GetHost() string {
@@ -3139,7 +3201,7 @@ type ProjectLink struct {
 
 func (x *ProjectLink) Reset() {
 	*x = ProjectLink{}
-	mi := &file_ownship_agent_v1_agent_proto_msgTypes[34]
+	mi := &file_ownship_agent_v1_agent_proto_msgTypes[35]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3151,7 +3213,7 @@ func (x *ProjectLink) String() string {
 func (*ProjectLink) ProtoMessage() {}
 
 func (x *ProjectLink) ProtoReflect() protoreflect.Message {
-	mi := &file_ownship_agent_v1_agent_proto_msgTypes[34]
+	mi := &file_ownship_agent_v1_agent_proto_msgTypes[35]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3164,7 +3226,7 @@ func (x *ProjectLink) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ProjectLink.ProtoReflect.Descriptor instead.
 func (*ProjectLink) Descriptor() ([]byte, []int) {
-	return file_ownship_agent_v1_agent_proto_rawDescGZIP(), []int{34}
+	return file_ownship_agent_v1_agent_proto_rawDescGZIP(), []int{35}
 }
 
 func (x *ProjectLink) GetEnvKey() string {
@@ -3199,7 +3261,7 @@ type VolumeMount struct {
 
 func (x *VolumeMount) Reset() {
 	*x = VolumeMount{}
-	mi := &file_ownship_agent_v1_agent_proto_msgTypes[35]
+	mi := &file_ownship_agent_v1_agent_proto_msgTypes[36]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3211,7 +3273,7 @@ func (x *VolumeMount) String() string {
 func (*VolumeMount) ProtoMessage() {}
 
 func (x *VolumeMount) ProtoReflect() protoreflect.Message {
-	mi := &file_ownship_agent_v1_agent_proto_msgTypes[35]
+	mi := &file_ownship_agent_v1_agent_proto_msgTypes[36]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3224,7 +3286,7 @@ func (x *VolumeMount) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use VolumeMount.ProtoReflect.Descriptor instead.
 func (*VolumeMount) Descriptor() ([]byte, []int) {
-	return file_ownship_agent_v1_agent_proto_rawDescGZIP(), []int{35}
+	return file_ownship_agent_v1_agent_proto_rawDescGZIP(), []int{36}
 }
 
 func (x *VolumeMount) GetName() string {
@@ -3260,7 +3322,7 @@ type HealthcheckConfig struct {
 
 func (x *HealthcheckConfig) Reset() {
 	*x = HealthcheckConfig{}
-	mi := &file_ownship_agent_v1_agent_proto_msgTypes[36]
+	mi := &file_ownship_agent_v1_agent_proto_msgTypes[37]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3272,7 +3334,7 @@ func (x *HealthcheckConfig) String() string {
 func (*HealthcheckConfig) ProtoMessage() {}
 
 func (x *HealthcheckConfig) ProtoReflect() protoreflect.Message {
-	mi := &file_ownship_agent_v1_agent_proto_msgTypes[36]
+	mi := &file_ownship_agent_v1_agent_proto_msgTypes[37]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3285,7 +3347,7 @@ func (x *HealthcheckConfig) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use HealthcheckConfig.ProtoReflect.Descriptor instead.
 func (*HealthcheckConfig) Descriptor() ([]byte, []int) {
-	return file_ownship_agent_v1_agent_proto_rawDescGZIP(), []int{36}
+	return file_ownship_agent_v1_agent_proto_rawDescGZIP(), []int{37}
 }
 
 func (x *HealthcheckConfig) GetEnabled() bool {
@@ -3319,7 +3381,7 @@ type CacheConfig struct {
 
 func (x *CacheConfig) Reset() {
 	*x = CacheConfig{}
-	mi := &file_ownship_agent_v1_agent_proto_msgTypes[37]
+	mi := &file_ownship_agent_v1_agent_proto_msgTypes[38]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3331,7 +3393,7 @@ func (x *CacheConfig) String() string {
 func (*CacheConfig) ProtoMessage() {}
 
 func (x *CacheConfig) ProtoReflect() protoreflect.Message {
-	mi := &file_ownship_agent_v1_agent_proto_msgTypes[37]
+	mi := &file_ownship_agent_v1_agent_proto_msgTypes[38]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3344,7 +3406,7 @@ func (x *CacheConfig) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CacheConfig.ProtoReflect.Descriptor instead.
 func (*CacheConfig) Descriptor() ([]byte, []int) {
-	return file_ownship_agent_v1_agent_proto_rawDescGZIP(), []int{37}
+	return file_ownship_agent_v1_agent_proto_rawDescGZIP(), []int{38}
 }
 
 func (x *CacheConfig) GetEnabled() bool {
@@ -3369,7 +3431,7 @@ type Destroy struct {
 
 func (x *Destroy) Reset() {
 	*x = Destroy{}
-	mi := &file_ownship_agent_v1_agent_proto_msgTypes[38]
+	mi := &file_ownship_agent_v1_agent_proto_msgTypes[39]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3381,7 +3443,7 @@ func (x *Destroy) String() string {
 func (*Destroy) ProtoMessage() {}
 
 func (x *Destroy) ProtoReflect() protoreflect.Message {
-	mi := &file_ownship_agent_v1_agent_proto_msgTypes[38]
+	mi := &file_ownship_agent_v1_agent_proto_msgTypes[39]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3394,7 +3456,7 @@ func (x *Destroy) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Destroy.ProtoReflect.Descriptor instead.
 func (*Destroy) Descriptor() ([]byte, []int) {
-	return file_ownship_agent_v1_agent_proto_rawDescGZIP(), []int{38}
+	return file_ownship_agent_v1_agent_proto_rawDescGZIP(), []int{39}
 }
 
 func (x *Destroy) GetProjectId() string {
@@ -3448,7 +3510,7 @@ type RouteUpdate struct {
 
 func (x *RouteUpdate) Reset() {
 	*x = RouteUpdate{}
-	mi := &file_ownship_agent_v1_agent_proto_msgTypes[39]
+	mi := &file_ownship_agent_v1_agent_proto_msgTypes[40]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3460,7 +3522,7 @@ func (x *RouteUpdate) String() string {
 func (*RouteUpdate) ProtoMessage() {}
 
 func (x *RouteUpdate) ProtoReflect() protoreflect.Message {
-	mi := &file_ownship_agent_v1_agent_proto_msgTypes[39]
+	mi := &file_ownship_agent_v1_agent_proto_msgTypes[40]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3473,7 +3535,7 @@ func (x *RouteUpdate) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RouteUpdate.ProtoReflect.Descriptor instead.
 func (*RouteUpdate) Descriptor() ([]byte, []int) {
-	return file_ownship_agent_v1_agent_proto_rawDescGZIP(), []int{39}
+	return file_ownship_agent_v1_agent_proto_rawDescGZIP(), []int{40}
 }
 
 func (x *RouteUpdate) GetProjectId() string {
@@ -3523,7 +3585,7 @@ type NetworkUpdate struct {
 
 func (x *NetworkUpdate) Reset() {
 	*x = NetworkUpdate{}
-	mi := &file_ownship_agent_v1_agent_proto_msgTypes[40]
+	mi := &file_ownship_agent_v1_agent_proto_msgTypes[41]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3535,7 +3597,7 @@ func (x *NetworkUpdate) String() string {
 func (*NetworkUpdate) ProtoMessage() {}
 
 func (x *NetworkUpdate) ProtoReflect() protoreflect.Message {
-	mi := &file_ownship_agent_v1_agent_proto_msgTypes[40]
+	mi := &file_ownship_agent_v1_agent_proto_msgTypes[41]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3548,7 +3610,7 @@ func (x *NetworkUpdate) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use NetworkUpdate.ProtoReflect.Descriptor instead.
 func (*NetworkUpdate) Descriptor() ([]byte, []int) {
-	return file_ownship_agent_v1_agent_proto_rawDescGZIP(), []int{40}
+	return file_ownship_agent_v1_agent_proto_rawDescGZIP(), []int{41}
 }
 
 func (x *NetworkUpdate) GetWorkloadId() string {
@@ -3580,7 +3642,7 @@ type AgentUpdate struct {
 
 func (x *AgentUpdate) Reset() {
 	*x = AgentUpdate{}
-	mi := &file_ownship_agent_v1_agent_proto_msgTypes[41]
+	mi := &file_ownship_agent_v1_agent_proto_msgTypes[42]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3592,7 +3654,7 @@ func (x *AgentUpdate) String() string {
 func (*AgentUpdate) ProtoMessage() {}
 
 func (x *AgentUpdate) ProtoReflect() protoreflect.Message {
-	mi := &file_ownship_agent_v1_agent_proto_msgTypes[41]
+	mi := &file_ownship_agent_v1_agent_proto_msgTypes[42]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3605,7 +3667,7 @@ func (x *AgentUpdate) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AgentUpdate.ProtoReflect.Descriptor instead.
 func (*AgentUpdate) Descriptor() ([]byte, []int) {
-	return file_ownship_agent_v1_agent_proto_rawDescGZIP(), []int{41}
+	return file_ownship_agent_v1_agent_proto_rawDescGZIP(), []int{42}
 }
 
 func (x *AgentUpdate) GetVersion() string {
@@ -3665,7 +3727,7 @@ type Event struct {
 
 func (x *Event) Reset() {
 	*x = Event{}
-	mi := &file_ownship_agent_v1_agent_proto_msgTypes[42]
+	mi := &file_ownship_agent_v1_agent_proto_msgTypes[43]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3677,7 +3739,7 @@ func (x *Event) String() string {
 func (*Event) ProtoMessage() {}
 
 func (x *Event) ProtoReflect() protoreflect.Message {
-	mi := &file_ownship_agent_v1_agent_proto_msgTypes[42]
+	mi := &file_ownship_agent_v1_agent_proto_msgTypes[43]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3690,7 +3752,7 @@ func (x *Event) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Event.ProtoReflect.Descriptor instead.
 func (*Event) Descriptor() ([]byte, []int) {
-	return file_ownship_agent_v1_agent_proto_rawDescGZIP(), []int{42}
+	return file_ownship_agent_v1_agent_proto_rawDescGZIP(), []int{43}
 }
 
 func (x *Event) GetTraceContext() string {
@@ -4042,7 +4104,7 @@ type DbQueryResult struct {
 
 func (x *DbQueryResult) Reset() {
 	*x = DbQueryResult{}
-	mi := &file_ownship_agent_v1_agent_proto_msgTypes[43]
+	mi := &file_ownship_agent_v1_agent_proto_msgTypes[44]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4054,7 +4116,7 @@ func (x *DbQueryResult) String() string {
 func (*DbQueryResult) ProtoMessage() {}
 
 func (x *DbQueryResult) ProtoReflect() protoreflect.Message {
-	mi := &file_ownship_agent_v1_agent_proto_msgTypes[43]
+	mi := &file_ownship_agent_v1_agent_proto_msgTypes[44]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4067,7 +4129,7 @@ func (x *DbQueryResult) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DbQueryResult.ProtoReflect.Descriptor instead.
 func (*DbQueryResult) Descriptor() ([]byte, []int) {
-	return file_ownship_agent_v1_agent_proto_rawDescGZIP(), []int{43}
+	return file_ownship_agent_v1_agent_proto_rawDescGZIP(), []int{44}
 }
 
 func (x *DbQueryResult) GetRequestId() string {
@@ -4121,7 +4183,7 @@ type DbResultSet struct {
 
 func (x *DbResultSet) Reset() {
 	*x = DbResultSet{}
-	mi := &file_ownship_agent_v1_agent_proto_msgTypes[44]
+	mi := &file_ownship_agent_v1_agent_proto_msgTypes[45]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4133,7 +4195,7 @@ func (x *DbResultSet) String() string {
 func (*DbResultSet) ProtoMessage() {}
 
 func (x *DbResultSet) ProtoReflect() protoreflect.Message {
-	mi := &file_ownship_agent_v1_agent_proto_msgTypes[44]
+	mi := &file_ownship_agent_v1_agent_proto_msgTypes[45]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4146,7 +4208,7 @@ func (x *DbResultSet) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DbResultSet.ProtoReflect.Descriptor instead.
 func (*DbResultSet) Descriptor() ([]byte, []int) {
-	return file_ownship_agent_v1_agent_proto_rawDescGZIP(), []int{44}
+	return file_ownship_agent_v1_agent_proto_rawDescGZIP(), []int{45}
 }
 
 func (x *DbResultSet) GetColumns() []*DbColumn {
@@ -4201,7 +4263,7 @@ type DbColumn struct {
 
 func (x *DbColumn) Reset() {
 	*x = DbColumn{}
-	mi := &file_ownship_agent_v1_agent_proto_msgTypes[45]
+	mi := &file_ownship_agent_v1_agent_proto_msgTypes[46]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4213,7 +4275,7 @@ func (x *DbColumn) String() string {
 func (*DbColumn) ProtoMessage() {}
 
 func (x *DbColumn) ProtoReflect() protoreflect.Message {
-	mi := &file_ownship_agent_v1_agent_proto_msgTypes[45]
+	mi := &file_ownship_agent_v1_agent_proto_msgTypes[46]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4226,7 +4288,7 @@ func (x *DbColumn) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DbColumn.ProtoReflect.Descriptor instead.
 func (*DbColumn) Descriptor() ([]byte, []int) {
-	return file_ownship_agent_v1_agent_proto_rawDescGZIP(), []int{45}
+	return file_ownship_agent_v1_agent_proto_rawDescGZIP(), []int{46}
 }
 
 func (x *DbColumn) GetName() string {
@@ -4252,7 +4314,7 @@ type DbRow struct {
 
 func (x *DbRow) Reset() {
 	*x = DbRow{}
-	mi := &file_ownship_agent_v1_agent_proto_msgTypes[46]
+	mi := &file_ownship_agent_v1_agent_proto_msgTypes[47]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4264,7 +4326,7 @@ func (x *DbRow) String() string {
 func (*DbRow) ProtoMessage() {}
 
 func (x *DbRow) ProtoReflect() protoreflect.Message {
-	mi := &file_ownship_agent_v1_agent_proto_msgTypes[46]
+	mi := &file_ownship_agent_v1_agent_proto_msgTypes[47]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4277,7 +4339,7 @@ func (x *DbRow) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DbRow.ProtoReflect.Descriptor instead.
 func (*DbRow) Descriptor() ([]byte, []int) {
-	return file_ownship_agent_v1_agent_proto_rawDescGZIP(), []int{46}
+	return file_ownship_agent_v1_agent_proto_rawDescGZIP(), []int{47}
 }
 
 func (x *DbRow) GetCells() []*DbCell {
@@ -4300,7 +4362,7 @@ type DbCell struct {
 
 func (x *DbCell) Reset() {
 	*x = DbCell{}
-	mi := &file_ownship_agent_v1_agent_proto_msgTypes[47]
+	mi := &file_ownship_agent_v1_agent_proto_msgTypes[48]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4312,7 +4374,7 @@ func (x *DbCell) String() string {
 func (*DbCell) ProtoMessage() {}
 
 func (x *DbCell) ProtoReflect() protoreflect.Message {
-	mi := &file_ownship_agent_v1_agent_proto_msgTypes[47]
+	mi := &file_ownship_agent_v1_agent_proto_msgTypes[48]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4325,7 +4387,7 @@ func (x *DbCell) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DbCell.ProtoReflect.Descriptor instead.
 func (*DbCell) Descriptor() ([]byte, []int) {
-	return file_ownship_agent_v1_agent_proto_rawDescGZIP(), []int{47}
+	return file_ownship_agent_v1_agent_proto_rawDescGZIP(), []int{48}
 }
 
 func (x *DbCell) GetNull() bool {
@@ -4372,7 +4434,7 @@ type HardwareReport struct {
 
 func (x *HardwareReport) Reset() {
 	*x = HardwareReport{}
-	mi := &file_ownship_agent_v1_agent_proto_msgTypes[48]
+	mi := &file_ownship_agent_v1_agent_proto_msgTypes[49]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4384,7 +4446,7 @@ func (x *HardwareReport) String() string {
 func (*HardwareReport) ProtoMessage() {}
 
 func (x *HardwareReport) ProtoReflect() protoreflect.Message {
-	mi := &file_ownship_agent_v1_agent_proto_msgTypes[48]
+	mi := &file_ownship_agent_v1_agent_proto_msgTypes[49]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4397,7 +4459,7 @@ func (x *HardwareReport) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use HardwareReport.ProtoReflect.Descriptor instead.
 func (*HardwareReport) Descriptor() ([]byte, []int) {
-	return file_ownship_agent_v1_agent_proto_rawDescGZIP(), []int{48}
+	return file_ownship_agent_v1_agent_proto_rawDescGZIP(), []int{49}
 }
 
 func (x *HardwareReport) GetNode() string {
@@ -4451,7 +4513,7 @@ type DiskHealth struct {
 
 func (x *DiskHealth) Reset() {
 	*x = DiskHealth{}
-	mi := &file_ownship_agent_v1_agent_proto_msgTypes[49]
+	mi := &file_ownship_agent_v1_agent_proto_msgTypes[50]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4463,7 +4525,7 @@ func (x *DiskHealth) String() string {
 func (*DiskHealth) ProtoMessage() {}
 
 func (x *DiskHealth) ProtoReflect() protoreflect.Message {
-	mi := &file_ownship_agent_v1_agent_proto_msgTypes[49]
+	mi := &file_ownship_agent_v1_agent_proto_msgTypes[50]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4476,7 +4538,7 @@ func (x *DiskHealth) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DiskHealth.ProtoReflect.Descriptor instead.
 func (*DiskHealth) Descriptor() ([]byte, []int) {
-	return file_ownship_agent_v1_agent_proto_rawDescGZIP(), []int{49}
+	return file_ownship_agent_v1_agent_proto_rawDescGZIP(), []int{50}
 }
 
 func (x *DiskHealth) GetDevice() string {
@@ -4539,7 +4601,7 @@ type Temperature struct {
 
 func (x *Temperature) Reset() {
 	*x = Temperature{}
-	mi := &file_ownship_agent_v1_agent_proto_msgTypes[50]
+	mi := &file_ownship_agent_v1_agent_proto_msgTypes[51]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4551,7 +4613,7 @@ func (x *Temperature) String() string {
 func (*Temperature) ProtoMessage() {}
 
 func (x *Temperature) ProtoReflect() protoreflect.Message {
-	mi := &file_ownship_agent_v1_agent_proto_msgTypes[50]
+	mi := &file_ownship_agent_v1_agent_proto_msgTypes[51]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4564,7 +4626,7 @@ func (x *Temperature) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Temperature.ProtoReflect.Descriptor instead.
 func (*Temperature) Descriptor() ([]byte, []int) {
-	return file_ownship_agent_v1_agent_proto_rawDescGZIP(), []int{50}
+	return file_ownship_agent_v1_agent_proto_rawDescGZIP(), []int{51}
 }
 
 func (x *Temperature) GetSensor() string {
@@ -4602,7 +4664,7 @@ type UpsStatus struct {
 
 func (x *UpsStatus) Reset() {
 	*x = UpsStatus{}
-	mi := &file_ownship_agent_v1_agent_proto_msgTypes[51]
+	mi := &file_ownship_agent_v1_agent_proto_msgTypes[52]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4614,7 +4676,7 @@ func (x *UpsStatus) String() string {
 func (*UpsStatus) ProtoMessage() {}
 
 func (x *UpsStatus) ProtoReflect() protoreflect.Message {
-	mi := &file_ownship_agent_v1_agent_proto_msgTypes[51]
+	mi := &file_ownship_agent_v1_agent_proto_msgTypes[52]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4627,7 +4689,7 @@ func (x *UpsStatus) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UpsStatus.ProtoReflect.Descriptor instead.
 func (*UpsStatus) Descriptor() ([]byte, []int) {
-	return file_ownship_agent_v1_agent_proto_rawDescGZIP(), []int{51}
+	return file_ownship_agent_v1_agent_proto_rawDescGZIP(), []int{52}
 }
 
 func (x *UpsStatus) GetName() string {
@@ -4677,7 +4739,7 @@ type VolumeFileEntry struct {
 
 func (x *VolumeFileEntry) Reset() {
 	*x = VolumeFileEntry{}
-	mi := &file_ownship_agent_v1_agent_proto_msgTypes[52]
+	mi := &file_ownship_agent_v1_agent_proto_msgTypes[53]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4689,7 +4751,7 @@ func (x *VolumeFileEntry) String() string {
 func (*VolumeFileEntry) ProtoMessage() {}
 
 func (x *VolumeFileEntry) ProtoReflect() protoreflect.Message {
-	mi := &file_ownship_agent_v1_agent_proto_msgTypes[52]
+	mi := &file_ownship_agent_v1_agent_proto_msgTypes[53]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4702,7 +4764,7 @@ func (x *VolumeFileEntry) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use VolumeFileEntry.ProtoReflect.Descriptor instead.
 func (*VolumeFileEntry) Descriptor() ([]byte, []int) {
-	return file_ownship_agent_v1_agent_proto_rawDescGZIP(), []int{52}
+	return file_ownship_agent_v1_agent_proto_rawDescGZIP(), []int{53}
 }
 
 func (x *VolumeFileEntry) GetName() string {
@@ -4744,7 +4806,7 @@ type VolumeFileList struct {
 
 func (x *VolumeFileList) Reset() {
 	*x = VolumeFileList{}
-	mi := &file_ownship_agent_v1_agent_proto_msgTypes[53]
+	mi := &file_ownship_agent_v1_agent_proto_msgTypes[54]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4756,7 +4818,7 @@ func (x *VolumeFileList) String() string {
 func (*VolumeFileList) ProtoMessage() {}
 
 func (x *VolumeFileList) ProtoReflect() protoreflect.Message {
-	mi := &file_ownship_agent_v1_agent_proto_msgTypes[53]
+	mi := &file_ownship_agent_v1_agent_proto_msgTypes[54]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4769,7 +4831,7 @@ func (x *VolumeFileList) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use VolumeFileList.ProtoReflect.Descriptor instead.
 func (*VolumeFileList) Descriptor() ([]byte, []int) {
-	return file_ownship_agent_v1_agent_proto_rawDescGZIP(), []int{53}
+	return file_ownship_agent_v1_agent_proto_rawDescGZIP(), []int{54}
 }
 
 func (x *VolumeFileList) GetRequestId() string {
@@ -4815,7 +4877,7 @@ type RelayRequest struct {
 
 func (x *RelayRequest) Reset() {
 	*x = RelayRequest{}
-	mi := &file_ownship_agent_v1_agent_proto_msgTypes[54]
+	mi := &file_ownship_agent_v1_agent_proto_msgTypes[55]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4827,7 +4889,7 @@ func (x *RelayRequest) String() string {
 func (*RelayRequest) ProtoMessage() {}
 
 func (x *RelayRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_ownship_agent_v1_agent_proto_msgTypes[54]
+	mi := &file_ownship_agent_v1_agent_proto_msgTypes[55]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4840,7 +4902,7 @@ func (x *RelayRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RelayRequest.ProtoReflect.Descriptor instead.
 func (*RelayRequest) Descriptor() ([]byte, []int) {
-	return file_ownship_agent_v1_agent_proto_rawDescGZIP(), []int{54}
+	return file_ownship_agent_v1_agent_proto_rawDescGZIP(), []int{55}
 }
 
 func (x *RelayRequest) GetSessionId() string {
@@ -4912,7 +4974,7 @@ type RelayHead struct {
 
 func (x *RelayHead) Reset() {
 	*x = RelayHead{}
-	mi := &file_ownship_agent_v1_agent_proto_msgTypes[55]
+	mi := &file_ownship_agent_v1_agent_proto_msgTypes[56]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4924,7 +4986,7 @@ func (x *RelayHead) String() string {
 func (*RelayHead) ProtoMessage() {}
 
 func (x *RelayHead) ProtoReflect() protoreflect.Message {
-	mi := &file_ownship_agent_v1_agent_proto_msgTypes[55]
+	mi := &file_ownship_agent_v1_agent_proto_msgTypes[56]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4937,7 +4999,7 @@ func (x *RelayHead) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RelayHead.ProtoReflect.Descriptor instead.
 func (*RelayHead) Descriptor() ([]byte, []int) {
-	return file_ownship_agent_v1_agent_proto_rawDescGZIP(), []int{55}
+	return file_ownship_agent_v1_agent_proto_rawDescGZIP(), []int{56}
 }
 
 func (x *RelayHead) GetStatus() uint32 {
@@ -4978,7 +5040,7 @@ type RelayHeader struct {
 
 func (x *RelayHeader) Reset() {
 	*x = RelayHeader{}
-	mi := &file_ownship_agent_v1_agent_proto_msgTypes[56]
+	mi := &file_ownship_agent_v1_agent_proto_msgTypes[57]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4990,7 +5052,7 @@ func (x *RelayHeader) String() string {
 func (*RelayHeader) ProtoMessage() {}
 
 func (x *RelayHeader) ProtoReflect() protoreflect.Message {
-	mi := &file_ownship_agent_v1_agent_proto_msgTypes[56]
+	mi := &file_ownship_agent_v1_agent_proto_msgTypes[57]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5003,7 +5065,7 @@ func (x *RelayHeader) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RelayHeader.ProtoReflect.Descriptor instead.
 func (*RelayHeader) Descriptor() ([]byte, []int) {
-	return file_ownship_agent_v1_agent_proto_rawDescGZIP(), []int{56}
+	return file_ownship_agent_v1_agent_proto_rawDescGZIP(), []int{57}
 }
 
 func (x *RelayHeader) GetName() string {
@@ -5037,7 +5099,7 @@ type RelayResponse struct {
 
 func (x *RelayResponse) Reset() {
 	*x = RelayResponse{}
-	mi := &file_ownship_agent_v1_agent_proto_msgTypes[57]
+	mi := &file_ownship_agent_v1_agent_proto_msgTypes[58]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5049,7 +5111,7 @@ func (x *RelayResponse) String() string {
 func (*RelayResponse) ProtoMessage() {}
 
 func (x *RelayResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_ownship_agent_v1_agent_proto_msgTypes[57]
+	mi := &file_ownship_agent_v1_agent_proto_msgTypes[58]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5062,7 +5124,7 @@ func (x *RelayResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RelayResponse.ProtoReflect.Descriptor instead.
 func (*RelayResponse) Descriptor() ([]byte, []int) {
-	return file_ownship_agent_v1_agent_proto_rawDescGZIP(), []int{57}
+	return file_ownship_agent_v1_agent_proto_rawDescGZIP(), []int{58}
 }
 
 func (x *RelayResponse) GetSessionId() string {
@@ -5129,7 +5191,7 @@ type VolumeFileChunk struct {
 
 func (x *VolumeFileChunk) Reset() {
 	*x = VolumeFileChunk{}
-	mi := &file_ownship_agent_v1_agent_proto_msgTypes[58]
+	mi := &file_ownship_agent_v1_agent_proto_msgTypes[59]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5141,7 +5203,7 @@ func (x *VolumeFileChunk) String() string {
 func (*VolumeFileChunk) ProtoMessage() {}
 
 func (x *VolumeFileChunk) ProtoReflect() protoreflect.Message {
-	mi := &file_ownship_agent_v1_agent_proto_msgTypes[58]
+	mi := &file_ownship_agent_v1_agent_proto_msgTypes[59]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5154,7 +5216,7 @@ func (x *VolumeFileChunk) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use VolumeFileChunk.ProtoReflect.Descriptor instead.
 func (*VolumeFileChunk) Descriptor() ([]byte, []int) {
-	return file_ownship_agent_v1_agent_proto_rawDescGZIP(), []int{58}
+	return file_ownship_agent_v1_agent_proto_rawDescGZIP(), []int{59}
 }
 
 func (x *VolumeFileChunk) GetRequestId() string {
@@ -5207,7 +5269,7 @@ type BackupResult struct {
 
 func (x *BackupResult) Reset() {
 	*x = BackupResult{}
-	mi := &file_ownship_agent_v1_agent_proto_msgTypes[59]
+	mi := &file_ownship_agent_v1_agent_proto_msgTypes[60]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5219,7 +5281,7 @@ func (x *BackupResult) String() string {
 func (*BackupResult) ProtoMessage() {}
 
 func (x *BackupResult) ProtoReflect() protoreflect.Message {
-	mi := &file_ownship_agent_v1_agent_proto_msgTypes[59]
+	mi := &file_ownship_agent_v1_agent_proto_msgTypes[60]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5232,7 +5294,7 @@ func (x *BackupResult) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use BackupResult.ProtoReflect.Descriptor instead.
 func (*BackupResult) Descriptor() ([]byte, []int) {
-	return file_ownship_agent_v1_agent_proto_rawDescGZIP(), []int{59}
+	return file_ownship_agent_v1_agent_proto_rawDescGZIP(), []int{60}
 }
 
 func (x *BackupResult) GetBackupId() string {
@@ -5284,7 +5346,7 @@ type DiskUsageReport struct {
 
 func (x *DiskUsageReport) Reset() {
 	*x = DiskUsageReport{}
-	mi := &file_ownship_agent_v1_agent_proto_msgTypes[60]
+	mi := &file_ownship_agent_v1_agent_proto_msgTypes[61]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5296,7 +5358,7 @@ func (x *DiskUsageReport) String() string {
 func (*DiskUsageReport) ProtoMessage() {}
 
 func (x *DiskUsageReport) ProtoReflect() protoreflect.Message {
-	mi := &file_ownship_agent_v1_agent_proto_msgTypes[60]
+	mi := &file_ownship_agent_v1_agent_proto_msgTypes[61]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5309,7 +5371,7 @@ func (x *DiskUsageReport) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DiskUsageReport.ProtoReflect.Descriptor instead.
 func (*DiskUsageReport) Descriptor() ([]byte, []int) {
-	return file_ownship_agent_v1_agent_proto_rawDescGZIP(), []int{60}
+	return file_ownship_agent_v1_agent_proto_rawDescGZIP(), []int{61}
 }
 
 func (x *DiskUsageReport) GetImagesBytes() uint64 {
@@ -5365,7 +5427,7 @@ type VolumeUsage struct {
 
 func (x *VolumeUsage) Reset() {
 	*x = VolumeUsage{}
-	mi := &file_ownship_agent_v1_agent_proto_msgTypes[61]
+	mi := &file_ownship_agent_v1_agent_proto_msgTypes[62]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5377,7 +5439,7 @@ func (x *VolumeUsage) String() string {
 func (*VolumeUsage) ProtoMessage() {}
 
 func (x *VolumeUsage) ProtoReflect() protoreflect.Message {
-	mi := &file_ownship_agent_v1_agent_proto_msgTypes[61]
+	mi := &file_ownship_agent_v1_agent_proto_msgTypes[62]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5390,7 +5452,7 @@ func (x *VolumeUsage) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use VolumeUsage.ProtoReflect.Descriptor instead.
 func (*VolumeUsage) Descriptor() ([]byte, []int) {
-	return file_ownship_agent_v1_agent_proto_rawDescGZIP(), []int{61}
+	return file_ownship_agent_v1_agent_proto_rawDescGZIP(), []int{62}
 }
 
 func (x *VolumeUsage) GetWorkloadId() string {
@@ -5426,7 +5488,7 @@ type ImageUpdateStatus struct {
 
 func (x *ImageUpdateStatus) Reset() {
 	*x = ImageUpdateStatus{}
-	mi := &file_ownship_agent_v1_agent_proto_msgTypes[62]
+	mi := &file_ownship_agent_v1_agent_proto_msgTypes[63]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5438,7 +5500,7 @@ func (x *ImageUpdateStatus) String() string {
 func (*ImageUpdateStatus) ProtoMessage() {}
 
 func (x *ImageUpdateStatus) ProtoReflect() protoreflect.Message {
-	mi := &file_ownship_agent_v1_agent_proto_msgTypes[62]
+	mi := &file_ownship_agent_v1_agent_proto_msgTypes[63]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5451,7 +5513,7 @@ func (x *ImageUpdateStatus) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ImageUpdateStatus.ProtoReflect.Descriptor instead.
 func (*ImageUpdateStatus) Descriptor() ([]byte, []int) {
-	return file_ownship_agent_v1_agent_proto_rawDescGZIP(), []int{62}
+	return file_ownship_agent_v1_agent_proto_rawDescGZIP(), []int{63}
 }
 
 func (x *ImageUpdateStatus) GetProjectId() string {
@@ -5491,7 +5553,7 @@ type RuntimeLogChunk struct {
 
 func (x *RuntimeLogChunk) Reset() {
 	*x = RuntimeLogChunk{}
-	mi := &file_ownship_agent_v1_agent_proto_msgTypes[63]
+	mi := &file_ownship_agent_v1_agent_proto_msgTypes[64]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5503,7 +5565,7 @@ func (x *RuntimeLogChunk) String() string {
 func (*RuntimeLogChunk) ProtoMessage() {}
 
 func (x *RuntimeLogChunk) ProtoReflect() protoreflect.Message {
-	mi := &file_ownship_agent_v1_agent_proto_msgTypes[63]
+	mi := &file_ownship_agent_v1_agent_proto_msgTypes[64]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5516,7 +5578,7 @@ func (x *RuntimeLogChunk) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RuntimeLogChunk.ProtoReflect.Descriptor instead.
 func (*RuntimeLogChunk) Descriptor() ([]byte, []int) {
-	return file_ownship_agent_v1_agent_proto_rawDescGZIP(), []int{63}
+	return file_ownship_agent_v1_agent_proto_rawDescGZIP(), []int{64}
 }
 
 func (x *RuntimeLogChunk) GetProjectId() string {
@@ -5570,7 +5632,7 @@ type Metrics struct {
 
 func (x *Metrics) Reset() {
 	*x = Metrics{}
-	mi := &file_ownship_agent_v1_agent_proto_msgTypes[64]
+	mi := &file_ownship_agent_v1_agent_proto_msgTypes[65]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5582,7 +5644,7 @@ func (x *Metrics) String() string {
 func (*Metrics) ProtoMessage() {}
 
 func (x *Metrics) ProtoReflect() protoreflect.Message {
-	mi := &file_ownship_agent_v1_agent_proto_msgTypes[64]
+	mi := &file_ownship_agent_v1_agent_proto_msgTypes[65]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5595,7 +5657,7 @@ func (x *Metrics) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Metrics.ProtoReflect.Descriptor instead.
 func (*Metrics) Descriptor() ([]byte, []int) {
-	return file_ownship_agent_v1_agent_proto_rawDescGZIP(), []int{64}
+	return file_ownship_agent_v1_agent_proto_rawDescGZIP(), []int{65}
 }
 
 func (x *Metrics) GetSamples() []*ProjectMetrics {
@@ -5622,7 +5684,7 @@ type ProjectMetrics struct {
 
 func (x *ProjectMetrics) Reset() {
 	*x = ProjectMetrics{}
-	mi := &file_ownship_agent_v1_agent_proto_msgTypes[65]
+	mi := &file_ownship_agent_v1_agent_proto_msgTypes[66]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5634,7 +5696,7 @@ func (x *ProjectMetrics) String() string {
 func (*ProjectMetrics) ProtoMessage() {}
 
 func (x *ProjectMetrics) ProtoReflect() protoreflect.Message {
-	mi := &file_ownship_agent_v1_agent_proto_msgTypes[65]
+	mi := &file_ownship_agent_v1_agent_proto_msgTypes[66]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5647,7 +5709,7 @@ func (x *ProjectMetrics) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ProjectMetrics.ProtoReflect.Descriptor instead.
 func (*ProjectMetrics) Descriptor() ([]byte, []int) {
-	return file_ownship_agent_v1_agent_proto_rawDescGZIP(), []int{65}
+	return file_ownship_agent_v1_agent_proto_rawDescGZIP(), []int{66}
 }
 
 func (x *ProjectMetrics) GetProjectId() string {
@@ -5716,7 +5778,7 @@ type SleepStateChanged struct {
 
 func (x *SleepStateChanged) Reset() {
 	*x = SleepStateChanged{}
-	mi := &file_ownship_agent_v1_agent_proto_msgTypes[66]
+	mi := &file_ownship_agent_v1_agent_proto_msgTypes[67]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5728,7 +5790,7 @@ func (x *SleepStateChanged) String() string {
 func (*SleepStateChanged) ProtoMessage() {}
 
 func (x *SleepStateChanged) ProtoReflect() protoreflect.Message {
-	mi := &file_ownship_agent_v1_agent_proto_msgTypes[66]
+	mi := &file_ownship_agent_v1_agent_proto_msgTypes[67]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5741,7 +5803,7 @@ func (x *SleepStateChanged) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SleepStateChanged.ProtoReflect.Descriptor instead.
 func (*SleepStateChanged) Descriptor() ([]byte, []int) {
-	return file_ownship_agent_v1_agent_proto_rawDescGZIP(), []int{66}
+	return file_ownship_agent_v1_agent_proto_rawDescGZIP(), []int{67}
 }
 
 func (x *SleepStateChanged) GetProjectId() string {
@@ -5768,7 +5830,7 @@ type CommandResult struct {
 
 func (x *CommandResult) Reset() {
 	*x = CommandResult{}
-	mi := &file_ownship_agent_v1_agent_proto_msgTypes[67]
+	mi := &file_ownship_agent_v1_agent_proto_msgTypes[68]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5780,7 +5842,7 @@ func (x *CommandResult) String() string {
 func (*CommandResult) ProtoMessage() {}
 
 func (x *CommandResult) ProtoReflect() protoreflect.Message {
-	mi := &file_ownship_agent_v1_agent_proto_msgTypes[67]
+	mi := &file_ownship_agent_v1_agent_proto_msgTypes[68]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5793,7 +5855,7 @@ func (x *CommandResult) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CommandResult.ProtoReflect.Descriptor instead.
 func (*CommandResult) Descriptor() ([]byte, []int) {
-	return file_ownship_agent_v1_agent_proto_rawDescGZIP(), []int{67}
+	return file_ownship_agent_v1_agent_proto_rawDescGZIP(), []int{68}
 }
 
 func (x *CommandResult) GetRunId() string {
@@ -5821,7 +5883,7 @@ type TerminalOutput struct {
 
 func (x *TerminalOutput) Reset() {
 	*x = TerminalOutput{}
-	mi := &file_ownship_agent_v1_agent_proto_msgTypes[68]
+	mi := &file_ownship_agent_v1_agent_proto_msgTypes[69]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5833,7 +5895,7 @@ func (x *TerminalOutput) String() string {
 func (*TerminalOutput) ProtoMessage() {}
 
 func (x *TerminalOutput) ProtoReflect() protoreflect.Message {
-	mi := &file_ownship_agent_v1_agent_proto_msgTypes[68]
+	mi := &file_ownship_agent_v1_agent_proto_msgTypes[69]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5846,7 +5908,7 @@ func (x *TerminalOutput) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use TerminalOutput.ProtoReflect.Descriptor instead.
 func (*TerminalOutput) Descriptor() ([]byte, []int) {
-	return file_ownship_agent_v1_agent_proto_rawDescGZIP(), []int{68}
+	return file_ownship_agent_v1_agent_proto_rawDescGZIP(), []int{69}
 }
 
 func (x *TerminalOutput) GetSessionId() string {
@@ -5899,7 +5961,7 @@ type Hello struct {
 
 func (x *Hello) Reset() {
 	*x = Hello{}
-	mi := &file_ownship_agent_v1_agent_proto_msgTypes[69]
+	mi := &file_ownship_agent_v1_agent_proto_msgTypes[70]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5911,7 +5973,7 @@ func (x *Hello) String() string {
 func (*Hello) ProtoMessage() {}
 
 func (x *Hello) ProtoReflect() protoreflect.Message {
-	mi := &file_ownship_agent_v1_agent_proto_msgTypes[69]
+	mi := &file_ownship_agent_v1_agent_proto_msgTypes[70]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5924,7 +5986,7 @@ func (x *Hello) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Hello.ProtoReflect.Descriptor instead.
 func (*Hello) Descriptor() ([]byte, []int) {
-	return file_ownship_agent_v1_agent_proto_rawDescGZIP(), []int{69}
+	return file_ownship_agent_v1_agent_proto_rawDescGZIP(), []int{70}
 }
 
 func (x *Hello) GetAgent() *AgentInfo {
@@ -6019,7 +6081,7 @@ type EngineInfo struct {
 
 func (x *EngineInfo) Reset() {
 	*x = EngineInfo{}
-	mi := &file_ownship_agent_v1_agent_proto_msgTypes[70]
+	mi := &file_ownship_agent_v1_agent_proto_msgTypes[71]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6031,7 +6093,7 @@ func (x *EngineInfo) String() string {
 func (*EngineInfo) ProtoMessage() {}
 
 func (x *EngineInfo) ProtoReflect() protoreflect.Message {
-	mi := &file_ownship_agent_v1_agent_proto_msgTypes[70]
+	mi := &file_ownship_agent_v1_agent_proto_msgTypes[71]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6044,7 +6106,7 @@ func (x *EngineInfo) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use EngineInfo.ProtoReflect.Descriptor instead.
 func (*EngineInfo) Descriptor() ([]byte, []int) {
-	return file_ownship_agent_v1_agent_proto_rawDescGZIP(), []int{70}
+	return file_ownship_agent_v1_agent_proto_rawDescGZIP(), []int{71}
 }
 
 func (x *EngineInfo) GetKind() ContainerEngine {
@@ -6090,7 +6152,7 @@ type Gpu struct {
 
 func (x *Gpu) Reset() {
 	*x = Gpu{}
-	mi := &file_ownship_agent_v1_agent_proto_msgTypes[71]
+	mi := &file_ownship_agent_v1_agent_proto_msgTypes[72]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6102,7 +6164,7 @@ func (x *Gpu) String() string {
 func (*Gpu) ProtoMessage() {}
 
 func (x *Gpu) ProtoReflect() protoreflect.Message {
-	mi := &file_ownship_agent_v1_agent_proto_msgTypes[71]
+	mi := &file_ownship_agent_v1_agent_proto_msgTypes[72]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6115,7 +6177,7 @@ func (x *Gpu) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Gpu.ProtoReflect.Descriptor instead.
 func (*Gpu) Descriptor() ([]byte, []int) {
-	return file_ownship_agent_v1_agent_proto_rawDescGZIP(), []int{71}
+	return file_ownship_agent_v1_agent_proto_rawDescGZIP(), []int{72}
 }
 
 func (x *Gpu) GetKind() string {
@@ -6166,7 +6228,7 @@ type NodeInfo struct {
 
 func (x *NodeInfo) Reset() {
 	*x = NodeInfo{}
-	mi := &file_ownship_agent_v1_agent_proto_msgTypes[72]
+	mi := &file_ownship_agent_v1_agent_proto_msgTypes[73]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6178,7 +6240,7 @@ func (x *NodeInfo) String() string {
 func (*NodeInfo) ProtoMessage() {}
 
 func (x *NodeInfo) ProtoReflect() protoreflect.Message {
-	mi := &file_ownship_agent_v1_agent_proto_msgTypes[72]
+	mi := &file_ownship_agent_v1_agent_proto_msgTypes[73]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6191,7 +6253,7 @@ func (x *NodeInfo) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use NodeInfo.ProtoReflect.Descriptor instead.
 func (*NodeInfo) Descriptor() ([]byte, []int) {
-	return file_ownship_agent_v1_agent_proto_rawDescGZIP(), []int{72}
+	return file_ownship_agent_v1_agent_proto_rawDescGZIP(), []int{73}
 }
 
 func (x *NodeInfo) GetName() string {
@@ -6240,7 +6302,7 @@ type Lifecycle struct {
 
 func (x *Lifecycle) Reset() {
 	*x = Lifecycle{}
-	mi := &file_ownship_agent_v1_agent_proto_msgTypes[73]
+	mi := &file_ownship_agent_v1_agent_proto_msgTypes[74]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6252,7 +6314,7 @@ func (x *Lifecycle) String() string {
 func (*Lifecycle) ProtoMessage() {}
 
 func (x *Lifecycle) ProtoReflect() protoreflect.Message {
-	mi := &file_ownship_agent_v1_agent_proto_msgTypes[73]
+	mi := &file_ownship_agent_v1_agent_proto_msgTypes[74]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6265,7 +6327,7 @@ func (x *Lifecycle) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Lifecycle.ProtoReflect.Descriptor instead.
 func (*Lifecycle) Descriptor() ([]byte, []int) {
-	return file_ownship_agent_v1_agent_proto_rawDescGZIP(), []int{73}
+	return file_ownship_agent_v1_agent_proto_rawDescGZIP(), []int{74}
 }
 
 func (x *Lifecycle) GetDeploymentId() string {
@@ -6303,7 +6365,7 @@ type LogChunk struct {
 
 func (x *LogChunk) Reset() {
 	*x = LogChunk{}
-	mi := &file_ownship_agent_v1_agent_proto_msgTypes[74]
+	mi := &file_ownship_agent_v1_agent_proto_msgTypes[75]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6315,7 +6377,7 @@ func (x *LogChunk) String() string {
 func (*LogChunk) ProtoMessage() {}
 
 func (x *LogChunk) ProtoReflect() protoreflect.Message {
-	mi := &file_ownship_agent_v1_agent_proto_msgTypes[74]
+	mi := &file_ownship_agent_v1_agent_proto_msgTypes[75]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6328,7 +6390,7 @@ func (x *LogChunk) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use LogChunk.ProtoReflect.Descriptor instead.
 func (*LogChunk) Descriptor() ([]byte, []int) {
-	return file_ownship_agent_v1_agent_proto_rawDescGZIP(), []int{74}
+	return file_ownship_agent_v1_agent_proto_rawDescGZIP(), []int{75}
 }
 
 func (x *LogChunk) GetDeploymentId() string {
@@ -6381,7 +6443,7 @@ type Deployed struct {
 
 func (x *Deployed) Reset() {
 	*x = Deployed{}
-	mi := &file_ownship_agent_v1_agent_proto_msgTypes[75]
+	mi := &file_ownship_agent_v1_agent_proto_msgTypes[76]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6393,7 +6455,7 @@ func (x *Deployed) String() string {
 func (*Deployed) ProtoMessage() {}
 
 func (x *Deployed) ProtoReflect() protoreflect.Message {
-	mi := &file_ownship_agent_v1_agent_proto_msgTypes[75]
+	mi := &file_ownship_agent_v1_agent_proto_msgTypes[76]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6406,7 +6468,7 @@ func (x *Deployed) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Deployed.ProtoReflect.Descriptor instead.
 func (*Deployed) Descriptor() ([]byte, []int) {
-	return file_ownship_agent_v1_agent_proto_rawDescGZIP(), []int{75}
+	return file_ownship_agent_v1_agent_proto_rawDescGZIP(), []int{76}
 }
 
 func (x *Deployed) GetDeploymentId() string {
@@ -6457,7 +6519,7 @@ type Failure struct {
 
 func (x *Failure) Reset() {
 	*x = Failure{}
-	mi := &file_ownship_agent_v1_agent_proto_msgTypes[76]
+	mi := &file_ownship_agent_v1_agent_proto_msgTypes[77]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6469,7 +6531,7 @@ func (x *Failure) String() string {
 func (*Failure) ProtoMessage() {}
 
 func (x *Failure) ProtoReflect() protoreflect.Message {
-	mi := &file_ownship_agent_v1_agent_proto_msgTypes[76]
+	mi := &file_ownship_agent_v1_agent_proto_msgTypes[77]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6482,7 +6544,7 @@ func (x *Failure) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Failure.ProtoReflect.Descriptor instead.
 func (*Failure) Descriptor() ([]byte, []int) {
-	return file_ownship_agent_v1_agent_proto_rawDescGZIP(), []int{76}
+	return file_ownship_agent_v1_agent_proto_rawDescGZIP(), []int{77}
 }
 
 func (x *Failure) GetDeploymentId() string {
@@ -6525,7 +6587,7 @@ type State struct {
 
 func (x *State) Reset() {
 	*x = State{}
-	mi := &file_ownship_agent_v1_agent_proto_msgTypes[77]
+	mi := &file_ownship_agent_v1_agent_proto_msgTypes[78]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6537,7 +6599,7 @@ func (x *State) String() string {
 func (*State) ProtoMessage() {}
 
 func (x *State) ProtoReflect() protoreflect.Message {
-	mi := &file_ownship_agent_v1_agent_proto_msgTypes[77]
+	mi := &file_ownship_agent_v1_agent_proto_msgTypes[78]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6550,7 +6612,7 @@ func (x *State) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use State.ProtoReflect.Descriptor instead.
 func (*State) Descriptor() ([]byte, []int) {
-	return file_ownship_agent_v1_agent_proto_rawDescGZIP(), []int{77}
+	return file_ownship_agent_v1_agent_proto_rawDescGZIP(), []int{78}
 }
 
 func (x *State) GetProjects() []*ProjectState {
@@ -6579,7 +6641,7 @@ type ProjectState struct {
 
 func (x *ProjectState) Reset() {
 	*x = ProjectState{}
-	mi := &file_ownship_agent_v1_agent_proto_msgTypes[78]
+	mi := &file_ownship_agent_v1_agent_proto_msgTypes[79]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6591,7 +6653,7 @@ func (x *ProjectState) String() string {
 func (*ProjectState) ProtoMessage() {}
 
 func (x *ProjectState) ProtoReflect() protoreflect.Message {
-	mi := &file_ownship_agent_v1_agent_proto_msgTypes[78]
+	mi := &file_ownship_agent_v1_agent_proto_msgTypes[79]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6604,7 +6666,7 @@ func (x *ProjectState) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ProjectState.ProtoReflect.Descriptor instead.
 func (*ProjectState) Descriptor() ([]byte, []int) {
-	return file_ownship_agent_v1_agent_proto_rawDescGZIP(), []int{78}
+	return file_ownship_agent_v1_agent_proto_rawDescGZIP(), []int{79}
 }
 
 func (x *ProjectState) GetProjectId() string {
@@ -6647,7 +6709,7 @@ type Heartbeat struct {
 
 func (x *Heartbeat) Reset() {
 	*x = Heartbeat{}
-	mi := &file_ownship_agent_v1_agent_proto_msgTypes[79]
+	mi := &file_ownship_agent_v1_agent_proto_msgTypes[80]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6659,7 +6721,7 @@ func (x *Heartbeat) String() string {
 func (*Heartbeat) ProtoMessage() {}
 
 func (x *Heartbeat) ProtoReflect() protoreflect.Message {
-	mi := &file_ownship_agent_v1_agent_proto_msgTypes[79]
+	mi := &file_ownship_agent_v1_agent_proto_msgTypes[80]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6672,7 +6734,7 @@ func (x *Heartbeat) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Heartbeat.ProtoReflect.Descriptor instead.
 func (*Heartbeat) Descriptor() ([]byte, []int) {
-	return file_ownship_agent_v1_agent_proto_rawDescGZIP(), []int{79}
+	return file_ownship_agent_v1_agent_proto_rawDescGZIP(), []int{80}
 }
 
 func (x *Heartbeat) GetTs() int64 {
@@ -6713,7 +6775,7 @@ type Ack struct {
 
 func (x *Ack) Reset() {
 	*x = Ack{}
-	mi := &file_ownship_agent_v1_agent_proto_msgTypes[80]
+	mi := &file_ownship_agent_v1_agent_proto_msgTypes[81]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6725,7 +6787,7 @@ func (x *Ack) String() string {
 func (*Ack) ProtoMessage() {}
 
 func (x *Ack) ProtoReflect() protoreflect.Message {
-	mi := &file_ownship_agent_v1_agent_proto_msgTypes[80]
+	mi := &file_ownship_agent_v1_agent_proto_msgTypes[81]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6738,7 +6800,7 @@ func (x *Ack) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Ack.ProtoReflect.Descriptor instead.
 func (*Ack) Descriptor() ([]byte, []int) {
-	return file_ownship_agent_v1_agent_proto_rawDescGZIP(), []int{80}
+	return file_ownship_agent_v1_agent_proto_rawDescGZIP(), []int{81}
 }
 
 func (x *Ack) GetCommandId() string {
@@ -6759,7 +6821,7 @@ type AgentInfo struct {
 
 func (x *AgentInfo) Reset() {
 	*x = AgentInfo{}
-	mi := &file_ownship_agent_v1_agent_proto_msgTypes[81]
+	mi := &file_ownship_agent_v1_agent_proto_msgTypes[82]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6771,7 +6833,7 @@ func (x *AgentInfo) String() string {
 func (*AgentInfo) ProtoMessage() {}
 
 func (x *AgentInfo) ProtoReflect() protoreflect.Message {
-	mi := &file_ownship_agent_v1_agent_proto_msgTypes[81]
+	mi := &file_ownship_agent_v1_agent_proto_msgTypes[82]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6784,7 +6846,7 @@ func (x *AgentInfo) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AgentInfo.ProtoReflect.Descriptor instead.
 func (*AgentInfo) Descriptor() ([]byte, []int) {
-	return file_ownship_agent_v1_agent_proto_rawDescGZIP(), []int{81}
+	return file_ownship_agent_v1_agent_proto_rawDescGZIP(), []int{82}
 }
 
 func (x *AgentInfo) GetVersion() string {
@@ -6825,7 +6887,7 @@ type RepoSource struct {
 
 func (x *RepoSource) Reset() {
 	*x = RepoSource{}
-	mi := &file_ownship_agent_v1_agent_proto_msgTypes[82]
+	mi := &file_ownship_agent_v1_agent_proto_msgTypes[83]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6837,7 +6899,7 @@ func (x *RepoSource) String() string {
 func (*RepoSource) ProtoMessage() {}
 
 func (x *RepoSource) ProtoReflect() protoreflect.Message {
-	mi := &file_ownship_agent_v1_agent_proto_msgTypes[82]
+	mi := &file_ownship_agent_v1_agent_proto_msgTypes[83]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6850,7 +6912,7 @@ func (x *RepoSource) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RepoSource.ProtoReflect.Descriptor instead.
 func (*RepoSource) Descriptor() ([]byte, []int) {
-	return file_ownship_agent_v1_agent_proto_rawDescGZIP(), []int{82}
+	return file_ownship_agent_v1_agent_proto_rawDescGZIP(), []int{83}
 }
 
 func (x *RepoSource) GetCloneUrl() string {
@@ -6908,7 +6970,7 @@ type Resources struct {
 
 func (x *Resources) Reset() {
 	*x = Resources{}
-	mi := &file_ownship_agent_v1_agent_proto_msgTypes[83]
+	mi := &file_ownship_agent_v1_agent_proto_msgTypes[84]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6920,7 +6982,7 @@ func (x *Resources) String() string {
 func (*Resources) ProtoMessage() {}
 
 func (x *Resources) ProtoReflect() protoreflect.Message {
-	mi := &file_ownship_agent_v1_agent_proto_msgTypes[83]
+	mi := &file_ownship_agent_v1_agent_proto_msgTypes[84]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6933,7 +6995,7 @@ func (x *Resources) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Resources.ProtoReflect.Descriptor instead.
 func (*Resources) Descriptor() ([]byte, []int) {
-	return file_ownship_agent_v1_agent_proto_rawDescGZIP(), []int{83}
+	return file_ownship_agent_v1_agent_proto_rawDescGZIP(), []int{84}
 }
 
 func (x *Resources) GetMemoryMb() uint32 {
@@ -6966,7 +7028,7 @@ type BuildConfig struct {
 
 func (x *BuildConfig) Reset() {
 	*x = BuildConfig{}
-	mi := &file_ownship_agent_v1_agent_proto_msgTypes[84]
+	mi := &file_ownship_agent_v1_agent_proto_msgTypes[85]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6978,7 +7040,7 @@ func (x *BuildConfig) String() string {
 func (*BuildConfig) ProtoMessage() {}
 
 func (x *BuildConfig) ProtoReflect() protoreflect.Message {
-	mi := &file_ownship_agent_v1_agent_proto_msgTypes[84]
+	mi := &file_ownship_agent_v1_agent_proto_msgTypes[85]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6991,7 +7053,7 @@ func (x *BuildConfig) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use BuildConfig.ProtoReflect.Descriptor instead.
 func (*BuildConfig) Descriptor() ([]byte, []int) {
-	return file_ownship_agent_v1_agent_proto_rawDescGZIP(), []int{84}
+	return file_ownship_agent_v1_agent_proto_rawDescGZIP(), []int{85}
 }
 
 func (x *BuildConfig) GetType() BuildType {
@@ -7012,7 +7074,7 @@ type RuntimeConfig struct {
 
 func (x *RuntimeConfig) Reset() {
 	*x = RuntimeConfig{}
-	mi := &file_ownship_agent_v1_agent_proto_msgTypes[85]
+	mi := &file_ownship_agent_v1_agent_proto_msgTypes[86]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -7024,7 +7086,7 @@ func (x *RuntimeConfig) String() string {
 func (*RuntimeConfig) ProtoMessage() {}
 
 func (x *RuntimeConfig) ProtoReflect() protoreflect.Message {
-	mi := &file_ownship_agent_v1_agent_proto_msgTypes[85]
+	mi := &file_ownship_agent_v1_agent_proto_msgTypes[86]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -7037,7 +7099,7 @@ func (x *RuntimeConfig) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RuntimeConfig.ProtoReflect.Descriptor instead.
 func (*RuntimeConfig) Descriptor() ([]byte, []int) {
-	return file_ownship_agent_v1_agent_proto_rawDescGZIP(), []int{85}
+	return file_ownship_agent_v1_agent_proto_rawDescGZIP(), []int{86}
 }
 
 func (x *RuntimeConfig) GetPort() uint32 {
@@ -7070,7 +7132,7 @@ type CloudflareTarget struct {
 
 func (x *CloudflareTarget) Reset() {
 	*x = CloudflareTarget{}
-	mi := &file_ownship_agent_v1_agent_proto_msgTypes[86]
+	mi := &file_ownship_agent_v1_agent_proto_msgTypes[87]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -7082,7 +7144,7 @@ func (x *CloudflareTarget) String() string {
 func (*CloudflareTarget) ProtoMessage() {}
 
 func (x *CloudflareTarget) ProtoReflect() protoreflect.Message {
-	mi := &file_ownship_agent_v1_agent_proto_msgTypes[86]
+	mi := &file_ownship_agent_v1_agent_proto_msgTypes[87]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -7095,7 +7157,7 @@ func (x *CloudflareTarget) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CloudflareTarget.ProtoReflect.Descriptor instead.
 func (*CloudflareTarget) Descriptor() ([]byte, []int) {
-	return file_ownship_agent_v1_agent_proto_rawDescGZIP(), []int{86}
+	return file_ownship_agent_v1_agent_proto_rawDescGZIP(), []int{87}
 }
 
 func (x *CloudflareTarget) GetHostname() string {
@@ -7151,7 +7213,7 @@ type EnvEntry struct {
 
 func (x *EnvEntry) Reset() {
 	*x = EnvEntry{}
-	mi := &file_ownship_agent_v1_agent_proto_msgTypes[87]
+	mi := &file_ownship_agent_v1_agent_proto_msgTypes[88]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -7163,7 +7225,7 @@ func (x *EnvEntry) String() string {
 func (*EnvEntry) ProtoMessage() {}
 
 func (x *EnvEntry) ProtoReflect() protoreflect.Message {
-	mi := &file_ownship_agent_v1_agent_proto_msgTypes[87]
+	mi := &file_ownship_agent_v1_agent_proto_msgTypes[88]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -7176,7 +7238,7 @@ func (x *EnvEntry) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use EnvEntry.ProtoReflect.Descriptor instead.
 func (*EnvEntry) Descriptor() ([]byte, []int) {
-	return file_ownship_agent_v1_agent_proto_rawDescGZIP(), []int{87}
+	return file_ownship_agent_v1_agent_proto_rawDescGZIP(), []int{88}
 }
 
 func (x *EnvEntry) GetKey() string {
@@ -7212,7 +7274,7 @@ type ActualState struct {
 
 func (x *ActualState) Reset() {
 	*x = ActualState{}
-	mi := &file_ownship_agent_v1_agent_proto_msgTypes[88]
+	mi := &file_ownship_agent_v1_agent_proto_msgTypes[89]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -7224,7 +7286,7 @@ func (x *ActualState) String() string {
 func (*ActualState) ProtoMessage() {}
 
 func (x *ActualState) ProtoReflect() protoreflect.Message {
-	mi := &file_ownship_agent_v1_agent_proto_msgTypes[88]
+	mi := &file_ownship_agent_v1_agent_proto_msgTypes[89]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -7237,7 +7299,7 @@ func (x *ActualState) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ActualState.ProtoReflect.Descriptor instead.
 func (*ActualState) Descriptor() ([]byte, []int) {
-	return file_ownship_agent_v1_agent_proto_rawDescGZIP(), []int{88}
+	return file_ownship_agent_v1_agent_proto_rawDescGZIP(), []int{89}
 }
 
 func (x *ActualState) GetLxcId() string {
@@ -7279,7 +7341,7 @@ const file_ownship_agent_v1_agent_proto_rawDesc = "" +
 	"\fPairResponse\x12\x1d\n" +
 	"\n" +
 	"machine_id\x18\x01 \x01(\tR\tmachineId\x12\x14\n" +
-	"\x05token\x18\x02 \x01(\tR\x05token\"\xa0\v\n" +
+	"\x05token\x18\x02 \x01(\tR\x05token\"\xdd\v\n" +
 	"\aCommand\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12#\n" +
 	"\rtrace_context\x18\x02 \x01(\tR\ftraceContext\x122\n" +
@@ -7306,10 +7368,13 @@ const file_ownship_agent_v1_agent_proto_rawDesc = "" +
 	"\x0enetwork_update\x18\x1e \x01(\v2\x1f.ownship.agent.v1.NetworkUpdateH\x00R\rnetworkUpdate\x12E\n" +
 	"\rrelay_request\x18\x1f \x01(\v2\x1e.ownship.agent.v1.RelayRequestH\x00R\frelayRequest\x126\n" +
 	"\bdb_query\x18  \x01(\v2\x19.ownship.agent.v1.DbQueryH\x00R\adbQuery\x12/\n" +
-	"\x05adopt\x18! \x01(\v2\x17.ownship.agent.v1.AdoptH\x00R\x05adoptB\t\n" +
+	"\x05adopt\x18! \x01(\v2\x17.ownship.agent.v1.AdoptH\x00R\x05adopt\x12;\n" +
+	"\tuninstall\x18\" \x01(\v2\x1b.ownship.agent.v1.UninstallH\x00R\tuninstallB\t\n" +
 	"\apayloadJ\x04\b\v\x10\fJ\x04\b\f\x10\rJ\x04\b\x0e\x10\x0f\"H\n" +
 	"\x05Adopt\x12?\n" +
-	"\tworkloads\x18\x01 \x03(\v2!.ownship.agent.v1.AdoptedWorkloadR\tworkloads\"I\n" +
+	"\tworkloads\x18\x01 \x03(\v2!.ownship.agent.v1.AdoptedWorkloadR\tworkloads\".\n" +
+	"\tUninstall\x12!\n" +
+	"\fworkload_ids\x18\x01 \x03(\tR\vworkloadIds\"I\n" +
 	"\x0fAdoptedWorkload\x12\x1f\n" +
 	"\vworkload_id\x18\x01 \x01(\tR\n" +
 	"workloadId\x12\x15\n" +
@@ -7909,7 +7974,7 @@ func file_ownship_agent_v1_agent_proto_rawDescGZIP() []byte {
 }
 
 var file_ownship_agent_v1_agent_proto_enumTypes = make([]protoimpl.EnumInfo, 5)
-var file_ownship_agent_v1_agent_proto_msgTypes = make([]protoimpl.MessageInfo, 89)
+var file_ownship_agent_v1_agent_proto_msgTypes = make([]protoimpl.MessageInfo, 90)
 var file_ownship_agent_v1_agent_proto_goTypes = []any{
 	(TerminalTarget)(0),       // 0: ownship.agent.v1.TerminalTarget
 	(ContainerEngine)(0),      // 1: ownship.agent.v1.ContainerEngine
@@ -7920,207 +7985,209 @@ var file_ownship_agent_v1_agent_proto_goTypes = []any{
 	(*PairResponse)(nil),      // 6: ownship.agent.v1.PairResponse
 	(*Command)(nil),           // 7: ownship.agent.v1.Command
 	(*Adopt)(nil),             // 8: ownship.agent.v1.Adopt
-	(*AdoptedWorkload)(nil),   // 9: ownship.agent.v1.AdoptedWorkload
-	(*DbQuery)(nil),           // 10: ownship.agent.v1.DbQuery
-	(*DbStatement)(nil),       // 11: ownship.agent.v1.DbStatement
-	(*DbValue)(nil),           // 12: ownship.agent.v1.DbValue
-	(*ListVolumeFiles)(nil),   // 13: ownship.agent.v1.ListVolumeFiles
-	(*ReadVolumeFile)(nil),    // 14: ownship.agent.v1.ReadVolumeFile
-	(*S3Target)(nil),          // 15: ownship.agent.v1.S3Target
-	(*ServiceDump)(nil),       // 16: ownship.agent.v1.ServiceDump
-	(*Backup)(nil),            // 17: ownship.agent.v1.Backup
-	(*RestoreBackup)(nil),     // 18: ownship.agent.v1.RestoreBackup
-	(*DeleteBackup)(nil),      // 19: ownship.agent.v1.DeleteBackup
-	(*DiskUsage)(nil),         // 20: ownship.agent.v1.DiskUsage
-	(*Prune)(nil),             // 21: ownship.agent.v1.Prune
-	(*CheckImageUpdate)(nil),  // 22: ownship.agent.v1.CheckImageUpdate
-	(*RequestState)(nil),      // 23: ownship.agent.v1.RequestState
-	(*Sleep)(nil),             // 24: ownship.agent.v1.Sleep
-	(*WakerConfig)(nil),       // 25: ownship.agent.v1.WakerConfig
-	(*Wake)(nil),              // 26: ownship.agent.v1.Wake
-	(*RunCommand)(nil),        // 27: ownship.agent.v1.RunCommand
-	(*TerminalInput)(nil),     // 28: ownship.agent.v1.TerminalInput
-	(*TerminalExec)(nil),      // 29: ownship.agent.v1.TerminalExec
-	(*Deploy)(nil),            // 30: ownship.agent.v1.Deploy
-	(*ComposeConfig)(nil),     // 31: ownship.agent.v1.ComposeConfig
-	(*LanTarget)(nil),         // 32: ownship.agent.v1.LanTarget
-	(*TailscaleTarget)(nil),   // 33: ownship.agent.v1.TailscaleTarget
-	(*DeployHooks)(nil),       // 34: ownship.agent.v1.DeployHooks
-	(*NetworkConfig)(nil),     // 35: ownship.agent.v1.NetworkConfig
-	(*RestoreHint)(nil),       // 36: ownship.agent.v1.RestoreHint
-	(*BasicAuth)(nil),         // 37: ownship.agent.v1.BasicAuth
-	(*RegistryAuth)(nil),      // 38: ownship.agent.v1.RegistryAuth
-	(*ProjectLink)(nil),       // 39: ownship.agent.v1.ProjectLink
-	(*VolumeMount)(nil),       // 40: ownship.agent.v1.VolumeMount
-	(*HealthcheckConfig)(nil), // 41: ownship.agent.v1.HealthcheckConfig
-	(*CacheConfig)(nil),       // 42: ownship.agent.v1.CacheConfig
-	(*Destroy)(nil),           // 43: ownship.agent.v1.Destroy
-	(*RouteUpdate)(nil),       // 44: ownship.agent.v1.RouteUpdate
-	(*NetworkUpdate)(nil),     // 45: ownship.agent.v1.NetworkUpdate
-	(*AgentUpdate)(nil),       // 46: ownship.agent.v1.AgentUpdate
-	(*Event)(nil),             // 47: ownship.agent.v1.Event
-	(*DbQueryResult)(nil),     // 48: ownship.agent.v1.DbQueryResult
-	(*DbResultSet)(nil),       // 49: ownship.agent.v1.DbResultSet
-	(*DbColumn)(nil),          // 50: ownship.agent.v1.DbColumn
-	(*DbRow)(nil),             // 51: ownship.agent.v1.DbRow
-	(*DbCell)(nil),            // 52: ownship.agent.v1.DbCell
-	(*HardwareReport)(nil),    // 53: ownship.agent.v1.HardwareReport
-	(*DiskHealth)(nil),        // 54: ownship.agent.v1.DiskHealth
-	(*Temperature)(nil),       // 55: ownship.agent.v1.Temperature
-	(*UpsStatus)(nil),         // 56: ownship.agent.v1.UpsStatus
-	(*VolumeFileEntry)(nil),   // 57: ownship.agent.v1.VolumeFileEntry
-	(*VolumeFileList)(nil),    // 58: ownship.agent.v1.VolumeFileList
-	(*RelayRequest)(nil),      // 59: ownship.agent.v1.RelayRequest
-	(*RelayHead)(nil),         // 60: ownship.agent.v1.RelayHead
-	(*RelayHeader)(nil),       // 61: ownship.agent.v1.RelayHeader
-	(*RelayResponse)(nil),     // 62: ownship.agent.v1.RelayResponse
-	(*VolumeFileChunk)(nil),   // 63: ownship.agent.v1.VolumeFileChunk
-	(*BackupResult)(nil),      // 64: ownship.agent.v1.BackupResult
-	(*DiskUsageReport)(nil),   // 65: ownship.agent.v1.DiskUsageReport
-	(*VolumeUsage)(nil),       // 66: ownship.agent.v1.VolumeUsage
-	(*ImageUpdateStatus)(nil), // 67: ownship.agent.v1.ImageUpdateStatus
-	(*RuntimeLogChunk)(nil),   // 68: ownship.agent.v1.RuntimeLogChunk
-	(*Metrics)(nil),           // 69: ownship.agent.v1.Metrics
-	(*ProjectMetrics)(nil),    // 70: ownship.agent.v1.ProjectMetrics
-	(*SleepStateChanged)(nil), // 71: ownship.agent.v1.SleepStateChanged
-	(*CommandResult)(nil),     // 72: ownship.agent.v1.CommandResult
-	(*TerminalOutput)(nil),    // 73: ownship.agent.v1.TerminalOutput
-	(*Hello)(nil),             // 74: ownship.agent.v1.Hello
-	(*EngineInfo)(nil),        // 75: ownship.agent.v1.EngineInfo
-	(*Gpu)(nil),               // 76: ownship.agent.v1.Gpu
-	(*NodeInfo)(nil),          // 77: ownship.agent.v1.NodeInfo
-	(*Lifecycle)(nil),         // 78: ownship.agent.v1.Lifecycle
-	(*LogChunk)(nil),          // 79: ownship.agent.v1.LogChunk
-	(*Deployed)(nil),          // 80: ownship.agent.v1.Deployed
-	(*Failure)(nil),           // 81: ownship.agent.v1.Failure
-	(*State)(nil),             // 82: ownship.agent.v1.State
-	(*ProjectState)(nil),      // 83: ownship.agent.v1.ProjectState
-	(*Heartbeat)(nil),         // 84: ownship.agent.v1.Heartbeat
-	(*Ack)(nil),               // 85: ownship.agent.v1.Ack
-	(*AgentInfo)(nil),         // 86: ownship.agent.v1.AgentInfo
-	(*RepoSource)(nil),        // 87: ownship.agent.v1.RepoSource
-	(*Resources)(nil),         // 88: ownship.agent.v1.Resources
-	(*BuildConfig)(nil),       // 89: ownship.agent.v1.BuildConfig
-	(*RuntimeConfig)(nil),     // 90: ownship.agent.v1.RuntimeConfig
-	(*CloudflareTarget)(nil),  // 91: ownship.agent.v1.CloudflareTarget
-	(*EnvEntry)(nil),          // 92: ownship.agent.v1.EnvEntry
-	(*ActualState)(nil),       // 93: ownship.agent.v1.ActualState
+	(*Uninstall)(nil),         // 9: ownship.agent.v1.Uninstall
+	(*AdoptedWorkload)(nil),   // 10: ownship.agent.v1.AdoptedWorkload
+	(*DbQuery)(nil),           // 11: ownship.agent.v1.DbQuery
+	(*DbStatement)(nil),       // 12: ownship.agent.v1.DbStatement
+	(*DbValue)(nil),           // 13: ownship.agent.v1.DbValue
+	(*ListVolumeFiles)(nil),   // 14: ownship.agent.v1.ListVolumeFiles
+	(*ReadVolumeFile)(nil),    // 15: ownship.agent.v1.ReadVolumeFile
+	(*S3Target)(nil),          // 16: ownship.agent.v1.S3Target
+	(*ServiceDump)(nil),       // 17: ownship.agent.v1.ServiceDump
+	(*Backup)(nil),            // 18: ownship.agent.v1.Backup
+	(*RestoreBackup)(nil),     // 19: ownship.agent.v1.RestoreBackup
+	(*DeleteBackup)(nil),      // 20: ownship.agent.v1.DeleteBackup
+	(*DiskUsage)(nil),         // 21: ownship.agent.v1.DiskUsage
+	(*Prune)(nil),             // 22: ownship.agent.v1.Prune
+	(*CheckImageUpdate)(nil),  // 23: ownship.agent.v1.CheckImageUpdate
+	(*RequestState)(nil),      // 24: ownship.agent.v1.RequestState
+	(*Sleep)(nil),             // 25: ownship.agent.v1.Sleep
+	(*WakerConfig)(nil),       // 26: ownship.agent.v1.WakerConfig
+	(*Wake)(nil),              // 27: ownship.agent.v1.Wake
+	(*RunCommand)(nil),        // 28: ownship.agent.v1.RunCommand
+	(*TerminalInput)(nil),     // 29: ownship.agent.v1.TerminalInput
+	(*TerminalExec)(nil),      // 30: ownship.agent.v1.TerminalExec
+	(*Deploy)(nil),            // 31: ownship.agent.v1.Deploy
+	(*ComposeConfig)(nil),     // 32: ownship.agent.v1.ComposeConfig
+	(*LanTarget)(nil),         // 33: ownship.agent.v1.LanTarget
+	(*TailscaleTarget)(nil),   // 34: ownship.agent.v1.TailscaleTarget
+	(*DeployHooks)(nil),       // 35: ownship.agent.v1.DeployHooks
+	(*NetworkConfig)(nil),     // 36: ownship.agent.v1.NetworkConfig
+	(*RestoreHint)(nil),       // 37: ownship.agent.v1.RestoreHint
+	(*BasicAuth)(nil),         // 38: ownship.agent.v1.BasicAuth
+	(*RegistryAuth)(nil),      // 39: ownship.agent.v1.RegistryAuth
+	(*ProjectLink)(nil),       // 40: ownship.agent.v1.ProjectLink
+	(*VolumeMount)(nil),       // 41: ownship.agent.v1.VolumeMount
+	(*HealthcheckConfig)(nil), // 42: ownship.agent.v1.HealthcheckConfig
+	(*CacheConfig)(nil),       // 43: ownship.agent.v1.CacheConfig
+	(*Destroy)(nil),           // 44: ownship.agent.v1.Destroy
+	(*RouteUpdate)(nil),       // 45: ownship.agent.v1.RouteUpdate
+	(*NetworkUpdate)(nil),     // 46: ownship.agent.v1.NetworkUpdate
+	(*AgentUpdate)(nil),       // 47: ownship.agent.v1.AgentUpdate
+	(*Event)(nil),             // 48: ownship.agent.v1.Event
+	(*DbQueryResult)(nil),     // 49: ownship.agent.v1.DbQueryResult
+	(*DbResultSet)(nil),       // 50: ownship.agent.v1.DbResultSet
+	(*DbColumn)(nil),          // 51: ownship.agent.v1.DbColumn
+	(*DbRow)(nil),             // 52: ownship.agent.v1.DbRow
+	(*DbCell)(nil),            // 53: ownship.agent.v1.DbCell
+	(*HardwareReport)(nil),    // 54: ownship.agent.v1.HardwareReport
+	(*DiskHealth)(nil),        // 55: ownship.agent.v1.DiskHealth
+	(*Temperature)(nil),       // 56: ownship.agent.v1.Temperature
+	(*UpsStatus)(nil),         // 57: ownship.agent.v1.UpsStatus
+	(*VolumeFileEntry)(nil),   // 58: ownship.agent.v1.VolumeFileEntry
+	(*VolumeFileList)(nil),    // 59: ownship.agent.v1.VolumeFileList
+	(*RelayRequest)(nil),      // 60: ownship.agent.v1.RelayRequest
+	(*RelayHead)(nil),         // 61: ownship.agent.v1.RelayHead
+	(*RelayHeader)(nil),       // 62: ownship.agent.v1.RelayHeader
+	(*RelayResponse)(nil),     // 63: ownship.agent.v1.RelayResponse
+	(*VolumeFileChunk)(nil),   // 64: ownship.agent.v1.VolumeFileChunk
+	(*BackupResult)(nil),      // 65: ownship.agent.v1.BackupResult
+	(*DiskUsageReport)(nil),   // 66: ownship.agent.v1.DiskUsageReport
+	(*VolumeUsage)(nil),       // 67: ownship.agent.v1.VolumeUsage
+	(*ImageUpdateStatus)(nil), // 68: ownship.agent.v1.ImageUpdateStatus
+	(*RuntimeLogChunk)(nil),   // 69: ownship.agent.v1.RuntimeLogChunk
+	(*Metrics)(nil),           // 70: ownship.agent.v1.Metrics
+	(*ProjectMetrics)(nil),    // 71: ownship.agent.v1.ProjectMetrics
+	(*SleepStateChanged)(nil), // 72: ownship.agent.v1.SleepStateChanged
+	(*CommandResult)(nil),     // 73: ownship.agent.v1.CommandResult
+	(*TerminalOutput)(nil),    // 74: ownship.agent.v1.TerminalOutput
+	(*Hello)(nil),             // 75: ownship.agent.v1.Hello
+	(*EngineInfo)(nil),        // 76: ownship.agent.v1.EngineInfo
+	(*Gpu)(nil),               // 77: ownship.agent.v1.Gpu
+	(*NodeInfo)(nil),          // 78: ownship.agent.v1.NodeInfo
+	(*Lifecycle)(nil),         // 79: ownship.agent.v1.Lifecycle
+	(*LogChunk)(nil),          // 80: ownship.agent.v1.LogChunk
+	(*Deployed)(nil),          // 81: ownship.agent.v1.Deployed
+	(*Failure)(nil),           // 82: ownship.agent.v1.Failure
+	(*State)(nil),             // 83: ownship.agent.v1.State
+	(*ProjectState)(nil),      // 84: ownship.agent.v1.ProjectState
+	(*Heartbeat)(nil),         // 85: ownship.agent.v1.Heartbeat
+	(*Ack)(nil),               // 86: ownship.agent.v1.Ack
+	(*AgentInfo)(nil),         // 87: ownship.agent.v1.AgentInfo
+	(*RepoSource)(nil),        // 88: ownship.agent.v1.RepoSource
+	(*Resources)(nil),         // 89: ownship.agent.v1.Resources
+	(*BuildConfig)(nil),       // 90: ownship.agent.v1.BuildConfig
+	(*RuntimeConfig)(nil),     // 91: ownship.agent.v1.RuntimeConfig
+	(*CloudflareTarget)(nil),  // 92: ownship.agent.v1.CloudflareTarget
+	(*EnvEntry)(nil),          // 93: ownship.agent.v1.EnvEntry
+	(*ActualState)(nil),       // 94: ownship.agent.v1.ActualState
 }
 var file_ownship_agent_v1_agent_proto_depIdxs = []int32{
-	86,  // 0: ownship.agent.v1.PairRequest.agent:type_name -> ownship.agent.v1.AgentInfo
-	30,  // 1: ownship.agent.v1.Command.deploy:type_name -> ownship.agent.v1.Deploy
-	43,  // 2: ownship.agent.v1.Command.destroy:type_name -> ownship.agent.v1.Destroy
-	46,  // 3: ownship.agent.v1.Command.agent_update:type_name -> ownship.agent.v1.AgentUpdate
-	44,  // 4: ownship.agent.v1.Command.route_update:type_name -> ownship.agent.v1.RouteUpdate
-	24,  // 5: ownship.agent.v1.Command.sleep:type_name -> ownship.agent.v1.Sleep
-	26,  // 6: ownship.agent.v1.Command.wake:type_name -> ownship.agent.v1.Wake
-	27,  // 7: ownship.agent.v1.Command.run_command:type_name -> ownship.agent.v1.RunCommand
-	28,  // 8: ownship.agent.v1.Command.terminal_input:type_name -> ownship.agent.v1.TerminalInput
-	23,  // 9: ownship.agent.v1.Command.request_state:type_name -> ownship.agent.v1.RequestState
-	17,  // 10: ownship.agent.v1.Command.backup:type_name -> ownship.agent.v1.Backup
-	18,  // 11: ownship.agent.v1.Command.restore_backup:type_name -> ownship.agent.v1.RestoreBackup
-	19,  // 12: ownship.agent.v1.Command.delete_backup:type_name -> ownship.agent.v1.DeleteBackup
-	20,  // 13: ownship.agent.v1.Command.disk_usage:type_name -> ownship.agent.v1.DiskUsage
-	21,  // 14: ownship.agent.v1.Command.prune:type_name -> ownship.agent.v1.Prune
-	22,  // 15: ownship.agent.v1.Command.check_image_update:type_name -> ownship.agent.v1.CheckImageUpdate
-	13,  // 16: ownship.agent.v1.Command.list_volume_files:type_name -> ownship.agent.v1.ListVolumeFiles
-	14,  // 17: ownship.agent.v1.Command.read_volume_file:type_name -> ownship.agent.v1.ReadVolumeFile
-	45,  // 18: ownship.agent.v1.Command.network_update:type_name -> ownship.agent.v1.NetworkUpdate
-	59,  // 19: ownship.agent.v1.Command.relay_request:type_name -> ownship.agent.v1.RelayRequest
-	10,  // 20: ownship.agent.v1.Command.db_query:type_name -> ownship.agent.v1.DbQuery
+	87,  // 0: ownship.agent.v1.PairRequest.agent:type_name -> ownship.agent.v1.AgentInfo
+	31,  // 1: ownship.agent.v1.Command.deploy:type_name -> ownship.agent.v1.Deploy
+	44,  // 2: ownship.agent.v1.Command.destroy:type_name -> ownship.agent.v1.Destroy
+	47,  // 3: ownship.agent.v1.Command.agent_update:type_name -> ownship.agent.v1.AgentUpdate
+	45,  // 4: ownship.agent.v1.Command.route_update:type_name -> ownship.agent.v1.RouteUpdate
+	25,  // 5: ownship.agent.v1.Command.sleep:type_name -> ownship.agent.v1.Sleep
+	27,  // 6: ownship.agent.v1.Command.wake:type_name -> ownship.agent.v1.Wake
+	28,  // 7: ownship.agent.v1.Command.run_command:type_name -> ownship.agent.v1.RunCommand
+	29,  // 8: ownship.agent.v1.Command.terminal_input:type_name -> ownship.agent.v1.TerminalInput
+	24,  // 9: ownship.agent.v1.Command.request_state:type_name -> ownship.agent.v1.RequestState
+	18,  // 10: ownship.agent.v1.Command.backup:type_name -> ownship.agent.v1.Backup
+	19,  // 11: ownship.agent.v1.Command.restore_backup:type_name -> ownship.agent.v1.RestoreBackup
+	20,  // 12: ownship.agent.v1.Command.delete_backup:type_name -> ownship.agent.v1.DeleteBackup
+	21,  // 13: ownship.agent.v1.Command.disk_usage:type_name -> ownship.agent.v1.DiskUsage
+	22,  // 14: ownship.agent.v1.Command.prune:type_name -> ownship.agent.v1.Prune
+	23,  // 15: ownship.agent.v1.Command.check_image_update:type_name -> ownship.agent.v1.CheckImageUpdate
+	14,  // 16: ownship.agent.v1.Command.list_volume_files:type_name -> ownship.agent.v1.ListVolumeFiles
+	15,  // 17: ownship.agent.v1.Command.read_volume_file:type_name -> ownship.agent.v1.ReadVolumeFile
+	46,  // 18: ownship.agent.v1.Command.network_update:type_name -> ownship.agent.v1.NetworkUpdate
+	60,  // 19: ownship.agent.v1.Command.relay_request:type_name -> ownship.agent.v1.RelayRequest
+	11,  // 20: ownship.agent.v1.Command.db_query:type_name -> ownship.agent.v1.DbQuery
 	8,   // 21: ownship.agent.v1.Command.adopt:type_name -> ownship.agent.v1.Adopt
-	9,   // 22: ownship.agent.v1.Adopt.workloads:type_name -> ownship.agent.v1.AdoptedWorkload
-	11,  // 23: ownship.agent.v1.DbQuery.statements:type_name -> ownship.agent.v1.DbStatement
-	12,  // 24: ownship.agent.v1.DbStatement.params:type_name -> ownship.agent.v1.DbValue
-	16,  // 25: ownship.agent.v1.Backup.service:type_name -> ownship.agent.v1.ServiceDump
-	15,  // 26: ownship.agent.v1.Backup.s3:type_name -> ownship.agent.v1.S3Target
-	16,  // 27: ownship.agent.v1.RestoreBackup.service:type_name -> ownship.agent.v1.ServiceDump
-	15,  // 28: ownship.agent.v1.RestoreBackup.s3:type_name -> ownship.agent.v1.S3Target
-	15,  // 29: ownship.agent.v1.DeleteBackup.s3:type_name -> ownship.agent.v1.S3Target
-	38,  // 30: ownship.agent.v1.CheckImageUpdate.auth:type_name -> ownship.agent.v1.RegistryAuth
-	25,  // 31: ownship.agent.v1.Sleep.waker:type_name -> ownship.agent.v1.WakerConfig
-	41,  // 32: ownship.agent.v1.WakerConfig.health:type_name -> ownship.agent.v1.HealthcheckConfig
-	29,  // 33: ownship.agent.v1.TerminalInput.exec:type_name -> ownship.agent.v1.TerminalExec
-	0,   // 34: ownship.agent.v1.TerminalInput.target:type_name -> ownship.agent.v1.TerminalTarget
-	92,  // 35: ownship.agent.v1.TerminalExec.env:type_name -> ownship.agent.v1.EnvEntry
-	87,  // 36: ownship.agent.v1.Deploy.repo:type_name -> ownship.agent.v1.RepoSource
-	88,  // 37: ownship.agent.v1.Deploy.resources:type_name -> ownship.agent.v1.Resources
-	89,  // 38: ownship.agent.v1.Deploy.build:type_name -> ownship.agent.v1.BuildConfig
-	90,  // 39: ownship.agent.v1.Deploy.runtime:type_name -> ownship.agent.v1.RuntimeConfig
-	91,  // 40: ownship.agent.v1.Deploy.cloudflare:type_name -> ownship.agent.v1.CloudflareTarget
-	92,  // 41: ownship.agent.v1.Deploy.env:type_name -> ownship.agent.v1.EnvEntry
-	41,  // 42: ownship.agent.v1.Deploy.health:type_name -> ownship.agent.v1.HealthcheckConfig
-	42,  // 43: ownship.agent.v1.Deploy.cache:type_name -> ownship.agent.v1.CacheConfig
-	40,  // 44: ownship.agent.v1.Deploy.volumes:type_name -> ownship.agent.v1.VolumeMount
-	38,  // 45: ownship.agent.v1.Deploy.registry_auth:type_name -> ownship.agent.v1.RegistryAuth
-	37,  // 46: ownship.agent.v1.Deploy.basic_auth:type_name -> ownship.agent.v1.BasicAuth
-	39,  // 47: ownship.agent.v1.Deploy.links:type_name -> ownship.agent.v1.ProjectLink
-	36,  // 48: ownship.agent.v1.Deploy.restore:type_name -> ownship.agent.v1.RestoreHint
-	35,  // 49: ownship.agent.v1.Deploy.network:type_name -> ownship.agent.v1.NetworkConfig
-	34,  // 50: ownship.agent.v1.Deploy.hooks:type_name -> ownship.agent.v1.DeployHooks
-	32,  // 51: ownship.agent.v1.Deploy.lan:type_name -> ownship.agent.v1.LanTarget
-	33,  // 52: ownship.agent.v1.Deploy.tailscale:type_name -> ownship.agent.v1.TailscaleTarget
-	31,  // 53: ownship.agent.v1.Deploy.compose:type_name -> ownship.agent.v1.ComposeConfig
-	1,   // 54: ownship.agent.v1.Deploy.container_engine:type_name -> ownship.agent.v1.ContainerEngine
-	15,  // 55: ownship.agent.v1.RestoreHint.s3:type_name -> ownship.agent.v1.S3Target
-	91,  // 56: ownship.agent.v1.RouteUpdate.cloudflare:type_name -> ownship.agent.v1.CloudflareTarget
-	32,  // 57: ownship.agent.v1.RouteUpdate.lan:type_name -> ownship.agent.v1.LanTarget
-	35,  // 58: ownship.agent.v1.NetworkUpdate.network:type_name -> ownship.agent.v1.NetworkConfig
-	74,  // 59: ownship.agent.v1.Event.hello:type_name -> ownship.agent.v1.Hello
-	78,  // 60: ownship.agent.v1.Event.lifecycle:type_name -> ownship.agent.v1.Lifecycle
-	79,  // 61: ownship.agent.v1.Event.log:type_name -> ownship.agent.v1.LogChunk
-	80,  // 62: ownship.agent.v1.Event.deployed:type_name -> ownship.agent.v1.Deployed
-	81,  // 63: ownship.agent.v1.Event.error:type_name -> ownship.agent.v1.Failure
-	82,  // 64: ownship.agent.v1.Event.state:type_name -> ownship.agent.v1.State
-	84,  // 65: ownship.agent.v1.Event.heartbeat:type_name -> ownship.agent.v1.Heartbeat
-	85,  // 66: ownship.agent.v1.Event.ack:type_name -> ownship.agent.v1.Ack
-	68,  // 67: ownship.agent.v1.Event.runtime_log:type_name -> ownship.agent.v1.RuntimeLogChunk
-	69,  // 68: ownship.agent.v1.Event.metrics:type_name -> ownship.agent.v1.Metrics
-	71,  // 69: ownship.agent.v1.Event.sleep_state:type_name -> ownship.agent.v1.SleepStateChanged
-	72,  // 70: ownship.agent.v1.Event.command_result:type_name -> ownship.agent.v1.CommandResult
-	73,  // 71: ownship.agent.v1.Event.terminal_output:type_name -> ownship.agent.v1.TerminalOutput
-	64,  // 72: ownship.agent.v1.Event.backup_result:type_name -> ownship.agent.v1.BackupResult
-	65,  // 73: ownship.agent.v1.Event.disk_usage:type_name -> ownship.agent.v1.DiskUsageReport
-	67,  // 74: ownship.agent.v1.Event.image_update:type_name -> ownship.agent.v1.ImageUpdateStatus
-	58,  // 75: ownship.agent.v1.Event.volume_file_list:type_name -> ownship.agent.v1.VolumeFileList
-	63,  // 76: ownship.agent.v1.Event.volume_file_chunk:type_name -> ownship.agent.v1.VolumeFileChunk
-	53,  // 77: ownship.agent.v1.Event.hardware:type_name -> ownship.agent.v1.HardwareReport
-	62,  // 78: ownship.agent.v1.Event.relay_response:type_name -> ownship.agent.v1.RelayResponse
-	48,  // 79: ownship.agent.v1.Event.db_query_result:type_name -> ownship.agent.v1.DbQueryResult
-	49,  // 80: ownship.agent.v1.DbQueryResult.results:type_name -> ownship.agent.v1.DbResultSet
-	50,  // 81: ownship.agent.v1.DbResultSet.columns:type_name -> ownship.agent.v1.DbColumn
-	51,  // 82: ownship.agent.v1.DbResultSet.rows:type_name -> ownship.agent.v1.DbRow
-	52,  // 83: ownship.agent.v1.DbRow.cells:type_name -> ownship.agent.v1.DbCell
-	54,  // 84: ownship.agent.v1.HardwareReport.disks:type_name -> ownship.agent.v1.DiskHealth
-	55,  // 85: ownship.agent.v1.HardwareReport.temperatures:type_name -> ownship.agent.v1.Temperature
-	56,  // 86: ownship.agent.v1.HardwareReport.ups:type_name -> ownship.agent.v1.UpsStatus
-	57,  // 87: ownship.agent.v1.VolumeFileList.entries:type_name -> ownship.agent.v1.VolumeFileEntry
-	60,  // 88: ownship.agent.v1.RelayRequest.head:type_name -> ownship.agent.v1.RelayHead
-	61,  // 89: ownship.agent.v1.RelayHead.headers:type_name -> ownship.agent.v1.RelayHeader
-	60,  // 90: ownship.agent.v1.RelayResponse.head:type_name -> ownship.agent.v1.RelayHead
-	66,  // 91: ownship.agent.v1.DiskUsageReport.volumes:type_name -> ownship.agent.v1.VolumeUsage
-	3,   // 92: ownship.agent.v1.RuntimeLogChunk.stream:type_name -> ownship.agent.v1.LogStream
-	70,  // 93: ownship.agent.v1.Metrics.samples:type_name -> ownship.agent.v1.ProjectMetrics
-	86,  // 94: ownship.agent.v1.Hello.agent:type_name -> ownship.agent.v1.AgentInfo
-	77,  // 95: ownship.agent.v1.Hello.nodes:type_name -> ownship.agent.v1.NodeInfo
-	76,  // 96: ownship.agent.v1.Hello.gpus:type_name -> ownship.agent.v1.Gpu
-	75,  // 97: ownship.agent.v1.Hello.engines:type_name -> ownship.agent.v1.EngineInfo
-	1,   // 98: ownship.agent.v1.EngineInfo.kind:type_name -> ownship.agent.v1.ContainerEngine
-	2,   // 99: ownship.agent.v1.Lifecycle.phase:type_name -> ownship.agent.v1.Phase
-	3,   // 100: ownship.agent.v1.LogChunk.stream:type_name -> ownship.agent.v1.LogStream
-	93,  // 101: ownship.agent.v1.Deployed.actual:type_name -> ownship.agent.v1.ActualState
-	83,  // 102: ownship.agent.v1.State.projects:type_name -> ownship.agent.v1.ProjectState
-	77,  // 103: ownship.agent.v1.Heartbeat.nodes:type_name -> ownship.agent.v1.NodeInfo
-	4,   // 104: ownship.agent.v1.BuildConfig.type:type_name -> ownship.agent.v1.BuildType
-	5,   // 105: ownship.agent.v1.AgentService.Pair:input_type -> ownship.agent.v1.PairRequest
-	47,  // 106: ownship.agent.v1.AgentService.Connect:input_type -> ownship.agent.v1.Event
-	6,   // 107: ownship.agent.v1.AgentService.Pair:output_type -> ownship.agent.v1.PairResponse
-	7,   // 108: ownship.agent.v1.AgentService.Connect:output_type -> ownship.agent.v1.Command
-	107, // [107:109] is the sub-list for method output_type
-	105, // [105:107] is the sub-list for method input_type
-	105, // [105:105] is the sub-list for extension type_name
-	105, // [105:105] is the sub-list for extension extendee
-	0,   // [0:105] is the sub-list for field type_name
+	9,   // 22: ownship.agent.v1.Command.uninstall:type_name -> ownship.agent.v1.Uninstall
+	10,  // 23: ownship.agent.v1.Adopt.workloads:type_name -> ownship.agent.v1.AdoptedWorkload
+	12,  // 24: ownship.agent.v1.DbQuery.statements:type_name -> ownship.agent.v1.DbStatement
+	13,  // 25: ownship.agent.v1.DbStatement.params:type_name -> ownship.agent.v1.DbValue
+	17,  // 26: ownship.agent.v1.Backup.service:type_name -> ownship.agent.v1.ServiceDump
+	16,  // 27: ownship.agent.v1.Backup.s3:type_name -> ownship.agent.v1.S3Target
+	17,  // 28: ownship.agent.v1.RestoreBackup.service:type_name -> ownship.agent.v1.ServiceDump
+	16,  // 29: ownship.agent.v1.RestoreBackup.s3:type_name -> ownship.agent.v1.S3Target
+	16,  // 30: ownship.agent.v1.DeleteBackup.s3:type_name -> ownship.agent.v1.S3Target
+	39,  // 31: ownship.agent.v1.CheckImageUpdate.auth:type_name -> ownship.agent.v1.RegistryAuth
+	26,  // 32: ownship.agent.v1.Sleep.waker:type_name -> ownship.agent.v1.WakerConfig
+	42,  // 33: ownship.agent.v1.WakerConfig.health:type_name -> ownship.agent.v1.HealthcheckConfig
+	30,  // 34: ownship.agent.v1.TerminalInput.exec:type_name -> ownship.agent.v1.TerminalExec
+	0,   // 35: ownship.agent.v1.TerminalInput.target:type_name -> ownship.agent.v1.TerminalTarget
+	93,  // 36: ownship.agent.v1.TerminalExec.env:type_name -> ownship.agent.v1.EnvEntry
+	88,  // 37: ownship.agent.v1.Deploy.repo:type_name -> ownship.agent.v1.RepoSource
+	89,  // 38: ownship.agent.v1.Deploy.resources:type_name -> ownship.agent.v1.Resources
+	90,  // 39: ownship.agent.v1.Deploy.build:type_name -> ownship.agent.v1.BuildConfig
+	91,  // 40: ownship.agent.v1.Deploy.runtime:type_name -> ownship.agent.v1.RuntimeConfig
+	92,  // 41: ownship.agent.v1.Deploy.cloudflare:type_name -> ownship.agent.v1.CloudflareTarget
+	93,  // 42: ownship.agent.v1.Deploy.env:type_name -> ownship.agent.v1.EnvEntry
+	42,  // 43: ownship.agent.v1.Deploy.health:type_name -> ownship.agent.v1.HealthcheckConfig
+	43,  // 44: ownship.agent.v1.Deploy.cache:type_name -> ownship.agent.v1.CacheConfig
+	41,  // 45: ownship.agent.v1.Deploy.volumes:type_name -> ownship.agent.v1.VolumeMount
+	39,  // 46: ownship.agent.v1.Deploy.registry_auth:type_name -> ownship.agent.v1.RegistryAuth
+	38,  // 47: ownship.agent.v1.Deploy.basic_auth:type_name -> ownship.agent.v1.BasicAuth
+	40,  // 48: ownship.agent.v1.Deploy.links:type_name -> ownship.agent.v1.ProjectLink
+	37,  // 49: ownship.agent.v1.Deploy.restore:type_name -> ownship.agent.v1.RestoreHint
+	36,  // 50: ownship.agent.v1.Deploy.network:type_name -> ownship.agent.v1.NetworkConfig
+	35,  // 51: ownship.agent.v1.Deploy.hooks:type_name -> ownship.agent.v1.DeployHooks
+	33,  // 52: ownship.agent.v1.Deploy.lan:type_name -> ownship.agent.v1.LanTarget
+	34,  // 53: ownship.agent.v1.Deploy.tailscale:type_name -> ownship.agent.v1.TailscaleTarget
+	32,  // 54: ownship.agent.v1.Deploy.compose:type_name -> ownship.agent.v1.ComposeConfig
+	1,   // 55: ownship.agent.v1.Deploy.container_engine:type_name -> ownship.agent.v1.ContainerEngine
+	16,  // 56: ownship.agent.v1.RestoreHint.s3:type_name -> ownship.agent.v1.S3Target
+	92,  // 57: ownship.agent.v1.RouteUpdate.cloudflare:type_name -> ownship.agent.v1.CloudflareTarget
+	33,  // 58: ownship.agent.v1.RouteUpdate.lan:type_name -> ownship.agent.v1.LanTarget
+	36,  // 59: ownship.agent.v1.NetworkUpdate.network:type_name -> ownship.agent.v1.NetworkConfig
+	75,  // 60: ownship.agent.v1.Event.hello:type_name -> ownship.agent.v1.Hello
+	79,  // 61: ownship.agent.v1.Event.lifecycle:type_name -> ownship.agent.v1.Lifecycle
+	80,  // 62: ownship.agent.v1.Event.log:type_name -> ownship.agent.v1.LogChunk
+	81,  // 63: ownship.agent.v1.Event.deployed:type_name -> ownship.agent.v1.Deployed
+	82,  // 64: ownship.agent.v1.Event.error:type_name -> ownship.agent.v1.Failure
+	83,  // 65: ownship.agent.v1.Event.state:type_name -> ownship.agent.v1.State
+	85,  // 66: ownship.agent.v1.Event.heartbeat:type_name -> ownship.agent.v1.Heartbeat
+	86,  // 67: ownship.agent.v1.Event.ack:type_name -> ownship.agent.v1.Ack
+	69,  // 68: ownship.agent.v1.Event.runtime_log:type_name -> ownship.agent.v1.RuntimeLogChunk
+	70,  // 69: ownship.agent.v1.Event.metrics:type_name -> ownship.agent.v1.Metrics
+	72,  // 70: ownship.agent.v1.Event.sleep_state:type_name -> ownship.agent.v1.SleepStateChanged
+	73,  // 71: ownship.agent.v1.Event.command_result:type_name -> ownship.agent.v1.CommandResult
+	74,  // 72: ownship.agent.v1.Event.terminal_output:type_name -> ownship.agent.v1.TerminalOutput
+	65,  // 73: ownship.agent.v1.Event.backup_result:type_name -> ownship.agent.v1.BackupResult
+	66,  // 74: ownship.agent.v1.Event.disk_usage:type_name -> ownship.agent.v1.DiskUsageReport
+	68,  // 75: ownship.agent.v1.Event.image_update:type_name -> ownship.agent.v1.ImageUpdateStatus
+	59,  // 76: ownship.agent.v1.Event.volume_file_list:type_name -> ownship.agent.v1.VolumeFileList
+	64,  // 77: ownship.agent.v1.Event.volume_file_chunk:type_name -> ownship.agent.v1.VolumeFileChunk
+	54,  // 78: ownship.agent.v1.Event.hardware:type_name -> ownship.agent.v1.HardwareReport
+	63,  // 79: ownship.agent.v1.Event.relay_response:type_name -> ownship.agent.v1.RelayResponse
+	49,  // 80: ownship.agent.v1.Event.db_query_result:type_name -> ownship.agent.v1.DbQueryResult
+	50,  // 81: ownship.agent.v1.DbQueryResult.results:type_name -> ownship.agent.v1.DbResultSet
+	51,  // 82: ownship.agent.v1.DbResultSet.columns:type_name -> ownship.agent.v1.DbColumn
+	52,  // 83: ownship.agent.v1.DbResultSet.rows:type_name -> ownship.agent.v1.DbRow
+	53,  // 84: ownship.agent.v1.DbRow.cells:type_name -> ownship.agent.v1.DbCell
+	55,  // 85: ownship.agent.v1.HardwareReport.disks:type_name -> ownship.agent.v1.DiskHealth
+	56,  // 86: ownship.agent.v1.HardwareReport.temperatures:type_name -> ownship.agent.v1.Temperature
+	57,  // 87: ownship.agent.v1.HardwareReport.ups:type_name -> ownship.agent.v1.UpsStatus
+	58,  // 88: ownship.agent.v1.VolumeFileList.entries:type_name -> ownship.agent.v1.VolumeFileEntry
+	61,  // 89: ownship.agent.v1.RelayRequest.head:type_name -> ownship.agent.v1.RelayHead
+	62,  // 90: ownship.agent.v1.RelayHead.headers:type_name -> ownship.agent.v1.RelayHeader
+	61,  // 91: ownship.agent.v1.RelayResponse.head:type_name -> ownship.agent.v1.RelayHead
+	67,  // 92: ownship.agent.v1.DiskUsageReport.volumes:type_name -> ownship.agent.v1.VolumeUsage
+	3,   // 93: ownship.agent.v1.RuntimeLogChunk.stream:type_name -> ownship.agent.v1.LogStream
+	71,  // 94: ownship.agent.v1.Metrics.samples:type_name -> ownship.agent.v1.ProjectMetrics
+	87,  // 95: ownship.agent.v1.Hello.agent:type_name -> ownship.agent.v1.AgentInfo
+	78,  // 96: ownship.agent.v1.Hello.nodes:type_name -> ownship.agent.v1.NodeInfo
+	77,  // 97: ownship.agent.v1.Hello.gpus:type_name -> ownship.agent.v1.Gpu
+	76,  // 98: ownship.agent.v1.Hello.engines:type_name -> ownship.agent.v1.EngineInfo
+	1,   // 99: ownship.agent.v1.EngineInfo.kind:type_name -> ownship.agent.v1.ContainerEngine
+	2,   // 100: ownship.agent.v1.Lifecycle.phase:type_name -> ownship.agent.v1.Phase
+	3,   // 101: ownship.agent.v1.LogChunk.stream:type_name -> ownship.agent.v1.LogStream
+	94,  // 102: ownship.agent.v1.Deployed.actual:type_name -> ownship.agent.v1.ActualState
+	84,  // 103: ownship.agent.v1.State.projects:type_name -> ownship.agent.v1.ProjectState
+	78,  // 104: ownship.agent.v1.Heartbeat.nodes:type_name -> ownship.agent.v1.NodeInfo
+	4,   // 105: ownship.agent.v1.BuildConfig.type:type_name -> ownship.agent.v1.BuildType
+	5,   // 106: ownship.agent.v1.AgentService.Pair:input_type -> ownship.agent.v1.PairRequest
+	48,  // 107: ownship.agent.v1.AgentService.Connect:input_type -> ownship.agent.v1.Event
+	6,   // 108: ownship.agent.v1.AgentService.Pair:output_type -> ownship.agent.v1.PairResponse
+	7,   // 109: ownship.agent.v1.AgentService.Connect:output_type -> ownship.agent.v1.Command
+	108, // [108:110] is the sub-list for method output_type
+	106, // [106:108] is the sub-list for method input_type
+	106, // [106:106] is the sub-list for extension type_name
+	106, // [106:106] is the sub-list for extension extendee
+	0,   // [0:106] is the sub-list for field type_name
 }
 
 func init() { file_ownship_agent_v1_agent_proto_init() }
@@ -8150,8 +8217,9 @@ func file_ownship_agent_v1_agent_proto_init() {
 		(*Command_RelayRequest)(nil),
 		(*Command_DbQuery)(nil),
 		(*Command_Adopt)(nil),
+		(*Command_Uninstall)(nil),
 	}
-	file_ownship_agent_v1_agent_proto_msgTypes[42].OneofWrappers = []any{
+	file_ownship_agent_v1_agent_proto_msgTypes[43].OneofWrappers = []any{
 		(*Event_Hello)(nil),
 		(*Event_Lifecycle)(nil),
 		(*Event_Log)(nil),
@@ -8180,7 +8248,7 @@ func file_ownship_agent_v1_agent_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_ownship_agent_v1_agent_proto_rawDesc), len(file_ownship_agent_v1_agent_proto_rawDesc)),
 			NumEnums:      5,
-			NumMessages:   89,
+			NumMessages:   90,
 			NumExtensions: 0,
 			NumServices:   1,
 		},
