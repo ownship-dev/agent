@@ -30,6 +30,8 @@ type Router struct {
 	log  *slog.Logger
 	// Removes the agent from the machine; unset in tests.
 	Uninstall func() error
+	// Builds a fresh Hello; unset in tests.
+	Announce func(context.Context) *agentv1.Event
 
 	mu   sync.Mutex
 	seen map[string]struct{}
@@ -242,8 +244,11 @@ func (r *Router) selfUpdate(ctx context.Context, emit executors.Emit) {
 	defer cancel()
 	exe, sum, err := updater.SelfUpdate(ctx, runtime.GOOS, runtime.GOARCH)
 	if errors.Is(err, updater.ErrNotNewer) {
-		// A redelivered push lands after the restart it caused.
-		r.log.Info("agent update requested, already on the latest release")
+		// The control plane still shows an old version, so a lost hello must not stick.
+		r.log.Info("agent update requested, already on the latest release", "version", config.Version, "detail", err)
+		if r.Announce != nil {
+			_ = emit(r.Announce(ctx))
+		}
 		return
 	}
 	if err != nil {

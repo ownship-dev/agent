@@ -57,7 +57,9 @@ type Client struct {
 }
 
 func New(cfg config.Config, token string, exec executors.Executor, rtl *executors.RuntimeLogs, term *executors.TerminalManager, waker *executors.Waker, relay *executors.Relay, log *slog.Logger) *Client {
-	return &Client{cfg: cfg, token: token, exec: exec, rtl: rtl, term: term, waker: waker, relay: relay, router: newRouter(cfg, exec, log), log: log, hw: hardware.New()}
+	c := &Client{cfg: cfg, token: token, exec: exec, rtl: rtl, term: term, waker: waker, relay: relay, router: newRouter(cfg, exec, log), log: log, hw: hardware.New()}
+	c.router.Announce = c.helloEvent
+	return c
 }
 
 // Run keeps a stream open until ctx is cancelled, reconnecting with exponential backoff.
