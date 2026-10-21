@@ -70,9 +70,6 @@ func TestVMCapabilityNamesWhatIsMissing(t *testing.T) {
 		}, "qemu-img is not installed"},
 		{"no kvm", func(*ProxmoxLXC) { vmKVMDevice = "/nonexistent/kvm" }, "/dev/kvm"},
 		{"storage", func(o *ProxmoxLXC) { o.cfg.Storage = "local" }, `"local" does not accept VM disks`},
-		{"no image", func(o *ProxmoxLXC) {
-			_ = os.Remove(filepath.Join(o.cfg.VMImageDir, "debian-12.qcow2"))
-		}, "No usable VM image"},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -80,14 +77,30 @@ func TestVMCapabilityNamesWhatIsMissing(t *testing.T) {
 			vmCapableHost(t, o)
 			vmImageInDir(t, o)
 			c.break_(o)
-			images, reason := o.vmCapability(context.Background())
-			if c.want == "" && reason != "" || !strings.Contains(reason, c.want) {
-				t.Fatalf("reason = %q, want %q", reason, c.want)
+			r := o.VMReport(context.Background())
+			if c.want == "" && r.BlockedReason != "" || !strings.Contains(r.BlockedReason, c.want) {
+				t.Fatalf("reason = %q, want %q", r.BlockedReason, c.want)
 			}
-			if c.name == "capable" && (len(images) != 1 || !images[0].GetUsable()) {
-				t.Fatalf("images = %v", images)
+			if c.name == "capable" && (len(r.Images) != 1 || !r.Images[0].GetUsable() || r.Images[0].GetSource() != "local") {
+				t.Fatalf("images = %v", r.Images)
 			}
 		})
+	}
+}
+
+func TestVMCapableWithoutAnyLocalImage(t *testing.T) {
+	o := vmProxmox(t)
+	vmCapableHost(t, o)
+	o.cfg.VMImageDir = filepath.Join(t.TempDir(), "missing")
+	r := o.VMReport(context.Background())
+	if !r.Capable || r.BlockedReason != "" || r.DirError != "" || len(r.Images) != 0 {
+		t.Fatalf("a host with no image directory is still capable: %+v", r)
+	}
+	bad := imageDir(t)
+	_ = os.Chmod(bad, 0o777)
+	o.cfg.VMImageDir = bad
+	if r := o.VMReport(context.Background()); !r.Capable || !strings.Contains(r.DirError, "writable by group or others") {
+		t.Fatalf("an unsafe directory is reported, not blocking: %+v", r)
 	}
 }
 

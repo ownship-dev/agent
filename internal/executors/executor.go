@@ -44,6 +44,11 @@ type Executor interface {
 	Templates(ctx context.Context) []string
 	Bridges(ctx context.Context) []string
 	VMs(ctx context.Context) VMReport
+	// VM image management, Proxmox only: a fetch from a user's link and a delete.
+	FetchVMImage(ctx context.Context, cmd *agentv1.FetchVmImage, status FetchStatus) error
+	RemoveVMImage(ctx context.Context, id string) error
+	// SweepVMImages drops expired catalogue copies; true when the report changed.
+	SweepVMImages() bool
 	InvalidateCaches()
 }
 
@@ -54,6 +59,8 @@ type VMReport struct {
 	Convert       bool
 	BlockedReason string
 	Images        []*agentv1.VmImage
+	// DirError says why VM_IMAGE_DIR was skipped; VMs still work from the catalogue.
+	DirError string
 }
 
 // CodedError carries a failure code (e.g. HEALTHCHECK_FAILED) the control plane acts on.

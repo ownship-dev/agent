@@ -155,6 +155,7 @@ func (c *Client) session(ctx context.Context) error {
 	go c.sampleMetrics(ctx, emit)
 	go c.reportState(ctx, emit)
 	go c.reportHardware(ctx, emit)
+	go c.sweepVMImages(ctx, emit)
 
 	// Close the socket on cancellation so Receive returns.
 	go func() {
@@ -189,6 +190,15 @@ func (c *Client) session(ctx context.Context) error {
 				_ = emit(c.helloEvent(ctx))
 				_ = emit(c.stateEvent(ctx))
 			}()
+			continue
+		}
+		// Live-only: a link can carry a token, so these never come through the durable queue.
+		if f := cmd.GetFetchVmImage(); f != nil {
+			go c.fetchVMImage(ctx, f, emit)
+			continue
+		}
+		if r := cmd.GetRemoveVmImage(); r != nil {
+			go c.removeVMImage(ctx, r, emit)
 			continue
 		}
 		// Off the receive loop, so a long deploy doesn't block delivery.
@@ -286,12 +296,74 @@ func (c *Client) helloEvent(ctx context.Context) *agentv1.Event {
 func withVMs(h *agentv1.Hello, vm executors.VMReport) {
 	h.VmImages = vm.Images
 	h.VmBlockedReason = vm.BlockedReason
+	h.VmImageDirError = vm.DirError
 	if vm.Capable {
-		h.Capabilities = append(slices.Clone(h.Capabilities), GuestVMCapability)
+		h.Capabilities = append(slices.Clone(h.Capabilities), GuestVMCapability, VMImageFetchCapability)
 	}
 	if vm.Convert {
 		h.Capabilities = append(slices.Clone(h.Capabilities), GuestConvertCapability)
 	}
+}
+
+// VMImageFetchCapability matches VM_IMAGE_FETCH_CAPABILITY in @ownship/core: this agent fetches
+// catalogue images and handles FetchVmImage / RemoveVmImage.
+const VMImageFetchCapability = "vm_image_fetch"
+
+// A link fetch may take long on a slow line; a stall still fails within the idle timeout.
+const vmImageFetchTimeout = 3 * time.Hour
+
+// Progress events are throttled; the dashboard polls them, not every megabyte.
+const vmImageStatusEvery = 2 * time.Second
+
+func (c *Client) fetchVMImage(ctx context.Context, f *agentv1.FetchVmImage, emit executors.Emit) {
+	ctx, cancel := context.WithTimeout(ctx, vmImageFetchTimeout)
+	defer cancel()
+	var last time.Time
+	status := func(state string, done, total int64, err error) {
+		if state == "downloading" && time.Since(last) < vmImageStatusEvery {
+			return
+		}
+		last = time.Now()
+		_ = emit(vmImageStatus(f.GetImageId(), state, done, total, err))
+	}
+	if err := c.exec.FetchVMImage(ctx, f, status); err != nil {
+		c.log.Warn("VM image fetch failed", "image", f.GetImageId(), "err", err)
+	}
+	_ = emit(c.helloEvent(ctx))
+}
+
+func (c *Client) removeVMImage(ctx context.Context, r *agentv1.RemoveVmImage, emit executors.Emit) {
+	err := c.exec.RemoveVMImage(ctx, r.GetImageId())
+	state := "removed"
+	if err != nil {
+		state = "failed"
+	}
+	_ = emit(vmImageStatus(r.GetImageId(), state, 0, 0, err))
+	_ = emit(c.helloEvent(ctx))
+}
+
+// sweepVMImages keeps a catalogue copy on disk no longer than its 15 days.
+func (c *Client) sweepVMImages(ctx context.Context, emit executors.Emit) {
+	ticker := time.NewTicker(time.Hour)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			if c.exec.SweepVMImages() {
+				_ = emit(c.helloEvent(ctx))
+			}
+		}
+	}
+}
+
+func vmImageStatus(id, state string, done, total int64, err error) *agentv1.Event {
+	st := &agentv1.VmImageFetchStatus{ImageId: id, State: state, BytesDone: uint64(max(done, 0)), BytesTotal: uint64(max(total, 0))}
+	if err != nil {
+		st.Error = err.Error()
+	}
+	return &agentv1.Event{Payload: &agentv1.Event_VmImageFetchStatus{VmImageFetchStatus: st}}
 }
 
 // GuestConvertCapability matches GUEST_CONVERT_CAPABILITY in @ownship/core.

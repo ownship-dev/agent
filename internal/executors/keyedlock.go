@@ -40,3 +40,25 @@ func (l *keyedLocks) lock(key string) func() {
 		l.mu.Unlock()
 	}
 }
+
+// tryLock takes the lock only if nobody holds or waits on it.
+func (l *keyedLocks) tryLock(key string) (func(), bool) {
+	l.mu.Lock()
+	if _, busy := l.locks[key]; busy {
+		l.mu.Unlock()
+		return nil, false
+	}
+	e := &refCountedMutex{refs: 1}
+	e.mu.Lock()
+	l.locks[key] = e
+	l.mu.Unlock()
+	return func() {
+		e.mu.Unlock()
+		l.mu.Lock()
+		e.refs--
+		if e.refs == 0 {
+			delete(l.locks, key)
+		}
+		l.mu.Unlock()
+	}, true
+}

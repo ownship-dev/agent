@@ -20,7 +20,7 @@ import (
 	agentv1 "github.com/ownship/agent/internal/gen/ownship/agent/v1"
 )
 
-// DefaultVMImageDir is where the owner puts cloud images; the agent never downloads one.
+// DefaultVMImageDir is where the owner puts cloud images by hand; fetched ones go to the cache.
 const DefaultVMImageDir = "/var/lib/ownship/vm-images"
 
 const vmImageMaxBytes = 64 << 30
@@ -111,7 +111,7 @@ func trustedPath(path string, wantDir bool) (os.FileInfo, error) {
 // dirErr is set when the directory itself can't be trusted.
 func scanVMImages(ctx context.Context, dir string) (images []vmImageFile, dirErr error) {
 	if _, err := trustedPath(dir, true); err != nil {
-		return nil, fmt.Errorf("%s %v", dir, err)
+		return nil, fmt.Errorf("%s %w", dir, err)
 	}
 	entries, err := os.ReadDir(dir)
 	if err != nil {
@@ -282,28 +282,6 @@ func checkSidecarSum(path, sum string) error {
 		return fmt.Errorf("sha256 does not match %s", filepath.Base(side))
 	}
 	return nil
-}
-
-// findVMImage re-validates one image at deploy time: a file removed or changed since the
-// last report fails the deploy rather than building from whatever is there now.
-func findVMImage(ctx context.Context, dir, id string) (vmImageFile, error) {
-	if !validVMImageID(id) {
-		return vmImageFile{}, fmt.Errorf("invalid VM image id %q", id)
-	}
-	images, err := scanVMImages(ctx, dir)
-	if err != nil {
-		return vmImageFile{}, fmt.Errorf("VM image directory: %w", err)
-	}
-	for _, img := range images {
-		if img.Info.Id != id {
-			continue
-		}
-		if !img.Info.GetUsable() {
-			return vmImageFile{}, fmt.Errorf("VM image %s is not usable: %s", id, img.Info.GetReason())
-		}
-		return img, nil
-	}
-	return vmImageFile{}, fmt.Errorf("VM image %s is not in %s", id, dir)
 }
 
 // reImportedVolid finds the volume qm importdisk created ("unused0:local-lvm:vm-9000-disk-0").

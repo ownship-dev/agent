@@ -31,6 +31,8 @@ type Config struct {
 	LxcStatePath    string
 	// Local cloud images VMs boot from; empty means /var/lib/ownship/vm-images.
 	VMImageDir string
+	// VM_IMAGE_CACHE_DIR: where catalogue and link images are fetched to.
+	VMImageCacheDir string
 	// Per-project checkouts for cached builds.
 	WorkspacesDir string
 	// Workload id to service URL, for domain changes without a redeploy.
@@ -89,6 +91,7 @@ func Load() (Config, error) {
 		ProxmoxRootfsGB:     rootfsGB,
 		LxcStatePath:        lxcStatePath,
 		VMImageDir:          os.Getenv("VM_IMAGE_DIR"),
+		VMImageCacheDir:     os.Getenv("VM_IMAGE_CACHE_DIR"),
 		WorkspacesDir:       workspacesDir,
 		ServiceStatePath:    serviceStatePath,
 		EngineStatePath:     engineStatePath,

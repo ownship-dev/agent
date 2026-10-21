@@ -62,9 +62,13 @@ type RunSpec struct {
 	Compose *ComposeRun
 	// UNSPECIFIED means docker.
 	Engine EngineKind
-	// UNSPECIFIED means an LXC; a VM boots from VmImage, an image id in VM_IMAGE_DIR.
-	GuestKind GuestKind
-	VmImage   string
+	// UNSPECIFIED means an LXC; a VM boots from VmImage, an image id on the machine or in the
+	// catalogue (VmImageSource says where to fetch it).
+	GuestKind     GuestKind
+	VmImage       string
+	VmImageSource *agentv1.VmImageSource
+	// Registers a RHEL VM with Red Hat; nil for every other image.
+	RhelSubscription *agentv1.RhelSubscription
 }
 
 // Orchestrator runs workloads: LocalDocker on the agent host, ProxmoxLXC in one LXC each.

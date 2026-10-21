@@ -468,6 +468,11 @@ func (g *vmGuest) configure(ctx context.Context, req createReq) error {
 	if len(nameservers) > 0 {
 		args = append(args, "--nameserver", strings.Join(nameservers, " "))
 	}
+	if ref, err := g.o.ensureVendorSnippet(ctx); err == nil {
+		args = append(args, "--cicustom", "vendor="+ref)
+	} else {
+		req.LogLine(agentv1.LogStream_LOG_STREAM_SYSTEM_WARN, "booting without the guest-agent snippet ("+err.Error()+"); the image must enable qemu-guest-agent itself")
+	}
 	if out, err := qmOutput(ctx, args...); err != nil {
 		return qmErr("configure vm", out, err)
 	}
@@ -484,6 +489,7 @@ func (g *vmGuest) Destroy(ctx context.Context, vmid string) error {
 	if err := g.owned(ctx, vmid); err != nil {
 		return nil
 	}
+	g.unregisterRHEL(ctx, vmid)
 	_, _ = qmOutput(ctx, "stop", vmid)
 	if out, err := qmOutput(ctx, "destroy", vmid, "--purge", "--destroy-unreferenced-disks", "1"); err != nil {
 		return qmErr("destroy vm", out, err)

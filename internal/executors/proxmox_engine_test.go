@@ -2,6 +2,7 @@ package executors
 
 import (
 	"context"
+	"errors"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -21,7 +22,13 @@ func newTestProxmox(t *testing.T) *ProxmoxLXC {
 	if err != nil {
 		t.Fatal(err)
 	}
-	o := &ProxmoxLXC{state: state, vms: vms, createLocks: newKeyedLocks(), baseLocks: newKeyedLocks()}
+	o := &ProxmoxLXC{state: state, vms: vms, createLocks: newKeyedLocks(), baseLocks: newKeyedLocks(), imageLocks: newKeyedLocks()}
+	// Never the host's real image directories or storage config.
+	o.cfg.VMImageDir = filepath.Join(dir, "no-vm-images")
+	o.cfg.VMImageCacheDir = filepath.Join(dir, "vm-image-cache")
+	origStorage := storageConfig
+	storageConfig = func(context.Context, string) ([]byte, error) { return nil, errors.New("no storage in tests") }
+	t.Cleanup(func() { storageConfig = origStorage })
 	o.vm = newVMGuest(o)
 	o.engines = loadEngineState(filepath.Join(dir, "engines.json"), proxmoxEngines(), nil)
 	return o

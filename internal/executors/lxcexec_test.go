@@ -21,7 +21,7 @@ func proxmoxWithLXC(t *testing.T, workload, vmid string) *ProxmoxLXC {
 	if err != nil {
 		t.Fatal(err)
 	}
-	o := &ProxmoxLXC{cfg: ProxmoxConfig{}, state: state, vms: vms, createLocks: newKeyedLocks(), baseLocks: newKeyedLocks()}
+	o := &ProxmoxLXC{cfg: ProxmoxConfig{}, state: state, vms: vms, createLocks: newKeyedLocks(), baseLocks: newKeyedLocks(), imageLocks: newKeyedLocks()}
 	o.vm = newVMGuest(o)
 	return o
 }

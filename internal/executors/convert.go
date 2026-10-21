@@ -124,6 +124,8 @@ type ConvertRequest struct {
 	WorkloadID   string
 	To           GuestKind
 	VMImage      string
+	VMSource     *agentv1.VmImageSource
+	Rhel         *agentv1.RhelSubscription
 	BaseOS       string
 	BaseTemplate string
 	TemplateVmid string
@@ -229,7 +231,7 @@ func (o *ProxmoxLXC) convertTarget(ctx context.Context, req ConvertRequest, to G
 	}
 	if to == GuestVM {
 		return o.createVM(pctx, RunSpec{WorkloadID: req.WorkloadID, GuestKind: GuestVM, VmImage: req.VMImage,
-			Resources: req.Resources, Network: req.Network, Hostname: req.Hostname, LogLine: req.LogLine})
+			VmImageSource: req.VMSource, RhelSubscription: req.Rhel, Resources: req.Resources, Network: req.Network, Hostname: req.Hostname, LogLine: req.LogLine})
 	}
 	return o.createLXC(pctx, req.WorkloadID, req.BaseTemplate, req.TemplateVmid, req.BaseOS, req.Resources,
 		req.TargetNode, req.Hostname, req.Network, req.LogLine)
@@ -361,6 +363,7 @@ func (d *Deployer) ConvertPrepare(ctx context.Context, cmd *agentv1.ConvertPrepa
 	if c, ok := d.orch.(Converter); ok {
 		vmid, err = c.ConvertPrepare(ctx, ConvertRequest{
 			WorkloadID: cmd.GetWorkloadId(), To: cmd.GetToKind(), VMImage: cmd.GetVmImage(),
+			VMSource: cmd.GetVmImageSource(), Rhel: cmd.GetRhelSubscription(),
 			BaseOS: cmd.GetBaseOs(), BaseTemplate: cmd.GetBaseTemplate(), TemplateVmid: cmd.GetTemplateVmid(),
 			Resources: cmd.GetResources(), Network: cmd.GetNetwork(), TargetNode: cmd.GetTargetNode(),
 			Hostname: cmd.GetHostname(), Volumes: cmd.GetVolumeNames(),

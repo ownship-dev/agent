@@ -29,6 +29,9 @@ func TestHelloAnnouncesVMsOnlyWhenCapable(t *testing.T) {
 	img := &agentv1.VmImage{Id: "debian-12", Usable: true}
 	capable := hello(config.Config{}, nil, nil, nil, "", nil, "", nil).GetHello()
 	withVMs(capable, executors.VMReport{Capable: true, Images: []*agentv1.VmImage{img}})
+	if !slices.Contains(capable.GetCapabilities(), VMImageFetchCapability) {
+		t.Fatal("a capable host fetches catalogue images")
+	}
 	if !slices.Contains(capable.GetCapabilities(), GuestVMCapability) || len(capable.GetVmImages()) != 1 {
 		t.Fatalf("capable host: %v %v", capable.GetCapabilities(), capable.GetVmImages())
 	}
@@ -38,6 +41,9 @@ func TestHelloAnnouncesVMsOnlyWhenCapable(t *testing.T) {
 
 	blocked := hello(config.Config{}, nil, nil, nil, "", nil, "", nil).GetHello()
 	withVMs(blocked, executors.VMReport{BlockedReason: "VMs need an x86_64 host.", Images: []*agentv1.VmImage{img}})
+	if slices.Contains(blocked.GetCapabilities(), VMImageFetchCapability) {
+		t.Fatal("a blocked host must not be sent catalogue images")
+	}
 	if slices.Contains(blocked.GetCapabilities(), GuestVMCapability) || blocked.GetVmBlockedReason() == "" {
 		t.Fatalf("blocked host: %v %q", blocked.GetCapabilities(), blocked.GetVmBlockedReason())
 	}

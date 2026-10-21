@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"runtime"
+	"strings"
 	"time"
 
 	agentv1 "github.com/ownship/agent/internal/gen/ownship/agent/v1"
@@ -35,34 +36,20 @@ func (o *ProxmoxLXC) vmImageDir() string {
 	return DefaultVMImageDir
 }
 
-// vmCapability reports every image candidate and, when VMs can't run here, one sentence saying
-// why ("" means capable).
-func (o *ProxmoxLXC) vmCapability(ctx context.Context) ([]*agentv1.VmImage, string) {
-	images, dirErr := scanVMImages(ctx, o.vmImageDir())
-	infos := make([]*agentv1.VmImage, 0, len(images))
-	usable := 0
-	for _, img := range images {
-		infos = append(infos, img.Info)
-		if img.Info.GetUsable() {
-			usable++
-		}
-	}
-	if reason := o.vmHostBlockedReason(ctx); reason != "" {
-		return infos, reason
-	}
-	switch {
-	case dirErr != nil:
-		return infos, fmt.Sprintf("The VM image directory can't be used: %v.", dirErr)
-	case usable == 0:
-		return infos, fmt.Sprintf("No usable VM image in %s; copy a cloud image there.", o.vmImageDir())
-	}
-	return infos, ""
-}
-
-// VMReport is read fresh on every Hello; image hashes are cached by size and mtime.
+// VMReport is read fresh on every Hello; image hashes are cached by size and mtime. A host
+// with no image is still capable: the catalogue fills the gap on first use.
 func (o *ProxmoxLXC) VMReport(ctx context.Context) VMReport {
-	images, reason := o.vmCapability(ctx)
-	return VMReport{Capable: reason == "", Convert: true, BlockedReason: reason, Images: images}
+	reason := o.vmHostBlockedReason(ctx)
+	files, dirErr := o.allVMImages(ctx)
+	images := make([]*agentv1.VmImage, 0, len(files))
+	for _, f := range files {
+		images = append(images, f.Info)
+	}
+	r := VMReport{Capable: reason == "", Convert: true, BlockedReason: reason, Images: images}
+	if dirErr != nil {
+		r.DirError = fmt.Sprintf("The VM image directory can't be used: %v.", dirErr)
+	}
+	return r
 }
 
 // vmHostBlockedReason checks the host alone; images only matter when a VM is created.
@@ -115,7 +102,7 @@ func (o *ProxmoxLXC) WakeHold(workload string) time.Duration {
 }
 
 // UninstallCleanup runs once every workload is destroyed: it removes the templates this agent
-// imported and its VM credentials. Image files belong to the owner and stay.
+// imported, its catalogue copies and VM credentials. The owner's images, links included, stay.
 func (o *ProxmoxLXC) UninstallCleanup(ctx context.Context) error {
 	if o.vms == nil {
 		return nil
@@ -128,6 +115,17 @@ func (o *ProxmoxLXC) UninstallCleanup(ctx context.Context) error {
 		for id, b := range bases {
 			o.destroyBase(ctx, all, b.Vmid, func(agentv1.LogStream, string) {})
 			_ = o.vms.removeBase(id)
+		}
+	}
+	dir := o.vmCacheDir()
+	if entries, err := os.ReadDir(dir); err == nil {
+		for _, e := range entries {
+			id, ok := strings.CutSuffix(e.Name(), ".meta.json")
+			if m, err := readCacheMeta(dir, id); ok && err == nil && m.Source == sourceCatalog {
+				img, meta := cachePaths(dir, id)
+				_ = os.Remove(img)
+				_ = os.Remove(meta)
+			}
 		}
 	}
 	if o.vm != nil {

@@ -28,6 +28,8 @@ type ProxmoxConfig struct {
 	VMStatePath string
 	// Where the owner puts VM cloud images; empty means DefaultVMImageDir.
 	VMImageDir string
+	// Where fetched images are cached; empty means DefaultVMImageCacheDir.
+	VMImageCacheDir string
 	// Engine inside each workload's LXC (docker or podman).
 	EngineStatePath string
 	// pct create defaults, overridable via env.
@@ -64,6 +66,8 @@ type ProxmoxLXC struct {
 	createLocks *keyedLocks
 	// Serializes template imports per image id.
 	baseLocks *keyedLocks
+	// Serializes fetching, deleting and sweeping one cached image id.
+	imageLocks *keyedLocks
 
 	// Serializes nextVmid() through pct create/clone across all workloads, so two projects
 	// deploying at once can't claim the same vmid.
@@ -113,7 +117,7 @@ func NewProxmoxLXC(cfg ProxmoxConfig) (*ProxmoxLXC, error) {
 	if err != nil {
 		return nil, fmt.Errorf("load vm state: %w", err)
 	}
-	o := &ProxmoxLXC{cfg: cfg, state: state, vms: vms, createLocks: newKeyedLocks(), baseLocks: newKeyedLocks()}
+	o := &ProxmoxLXC{cfg: cfg, state: state, vms: vms, createLocks: newKeyedLocks(), baseLocks: newKeyedLocks(), imageLocks: newKeyedLocks()}
 	o.vm = newVMGuest(o)
 	o.engines = loadEngineState(cfg.EngineStatePath, proxmoxEngines(), o.probeEngine)
 	return o, nil
@@ -1129,9 +1133,12 @@ func (o *ProxmoxLXC) createVM(ctx context.Context, spec RunSpec) (guestRef, erro
 	if o.vm == nil {
 		o.vm = newVMGuest(o)
 	}
-	img, err := findVMImage(ctx, o.vmImageDir(), spec.VmImage)
+	img, err := o.resolveVMImage(ctx, spec.VmImage, spec.VmImageSource, spec.LogLine)
 	if err != nil {
 		return guestRef{}, err
+	}
+	if img.Info.GetFamily() == "rhel" && spec.RhelSubscription.GetActivationKey() == "" {
+		return guestRef{}, fmt.Errorf("VM image %s is RHEL, which needs a Red Hat subscription in the Keychain", spec.VmImage)
 	}
 	base, err := o.ensureVMBase(ctx, img, spec.LogLine)
 	if err != nil {
@@ -1181,6 +1188,11 @@ func (o *ProxmoxLXC) createVM(ctx context.Context, spec RunSpec) (guestRef, erro
 	}
 	if err := o.startAndTrack(ctx, ref, spec.WorkloadID); err != nil {
 		return fail(err)
+	}
+	if img.Info.GetFamily() == "rhel" {
+		if err := o.vm.registerRHEL(ctx, vmid, spec.RhelSubscription, spec.LogLine); err != nil {
+			return fail(err)
+		}
 	}
 	return ref, nil
 }

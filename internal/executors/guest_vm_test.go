@@ -295,6 +295,19 @@ func TestVMCreateAndConfigureUseNativeCloudInitOptions(t *testing.T) {
 	if _, err := os.Stat(keyFile); !os.IsNotExist(err) {
 		t.Fatal("temporary key file left behind")
 	}
+	// With the snippet storage in place only vendor data is added, never user data.
+	fakeStorage(t, `{"type":"dir","path":"DIR","content":"iso"}`)
+	if err := g.configure(context.Background(), req); err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range *calls {
+		if c[0] == "set" && slices.Contains(c, "--ciuser") {
+			set = strings.Join(c, " ")
+		}
+	}
+	if !strings.Contains(set, "--cicustom vendor=local:snippets/ownship-vendor.yaml") || strings.Contains(set, "user=") {
+		t.Fatalf("vendor snippet: %s", set)
+	}
 }
 
 func TestVMConfigureRefusesHostileValues(t *testing.T) {

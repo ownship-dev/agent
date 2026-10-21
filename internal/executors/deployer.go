@@ -340,6 +340,8 @@ func (d *Deployer) buildRunSpec(cmd *agentv1.Deploy, wl, image string, env []*ag
 		Engine:           normalizeKind(cmd.GetContainerEngine()),
 		GuestKind:        normalizeGuestKind(cmd.GetGuestKind()),
 		VmImage:          cmd.GetVmImage(),
+		VmImageSource:    cmd.GetVmImageSource(),
+		RhelSubscription: cmd.GetRhelSubscription(),
 	}
 	// On Proxmox, Run clones and builds inside the LXC.
 	if repoBuild && !d.orch.HostBuilds() {
@@ -745,6 +747,30 @@ func (d *Deployer) VMs(ctx context.Context) VMReport {
 		return p.VMReport(ctx)
 	}
 	return VMReport{}
+}
+
+var errNoVMImages = errors.New("VM images need a Proxmox host")
+
+func (d *Deployer) FetchVMImage(ctx context.Context, cmd *agentv1.FetchVmImage, status FetchStatus) error {
+	if p, ok := d.orch.(*ProxmoxLXC); ok {
+		return p.FetchLinkImage(ctx, cmd, status)
+	}
+	status("failed", 0, 0, errNoVMImages)
+	return errNoVMImages
+}
+
+func (d *Deployer) RemoveVMImage(ctx context.Context, id string) error {
+	if p, ok := d.orch.(*ProxmoxLXC); ok {
+		return p.RemoveVMImage(ctx, id)
+	}
+	return errNoVMImages
+}
+
+func (d *Deployer) SweepVMImages() bool {
+	if p, ok := d.orch.(*ProxmoxLXC); ok {
+		return p.SweepVMImages()
+	}
+	return false
 }
 
 func (d *Deployer) InvalidateCaches() {

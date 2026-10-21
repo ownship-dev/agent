@@ -174,9 +174,14 @@ func TestScanVMImagesRefusesAnUnsafeDirectory(t *testing.T) {
 	}
 }
 
-func TestFindVMImageRevalidatesAtDeployTime(t *testing.T) {
+func TestResolveVMImageRevalidatesAtDeployTime(t *testing.T) {
 	dir := imageDir(t)
 	fakeQemuImg(t, nil)
+	o := newTestProxmox(t)
+	o.cfg.VMImageDir = dir
+	findVMImage := func(ctx context.Context, _ string, id string) (vmImageFile, error) {
+		return o.resolveVMImage(ctx, id, nil, noLog)
+	}
 	put(t, dir, "debian-12.qcow2", "v1", 0o644)
 	put(t, dir, "debian-12.qcow2.sha256", sumOf("v1")+"  debian-12.qcow2\n", 0o644)
 	ctx := context.Background()
@@ -188,7 +193,7 @@ func TestFindVMImageRevalidatesAtDeployTime(t *testing.T) {
 		t.Fatalf("a changed file must fail: %v", err)
 	}
 	_ = os.Remove(filepath.Join(dir, "debian-12.qcow2"))
-	if _, err := findVMImage(ctx, dir, "debian-12"); err == nil || !strings.Contains(err.Error(), "is not in") {
+	if _, err := findVMImage(ctx, dir, "debian-12"); err == nil || !strings.Contains(err.Error(), "is not on this machine") {
 		t.Fatalf("a removed file must fail: %v", err)
 	}
 	if _, err := findVMImage(ctx, dir, "../etc/passwd"); err == nil {
