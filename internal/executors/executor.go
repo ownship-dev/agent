@@ -40,6 +40,8 @@ type Executor interface {
 	PveVersion(ctx context.Context) string
 	Engines(ctx context.Context) []*agentv1.EngineInfo
 	Sample(ctx context.Context) []*agentv1.ProjectMetrics
+	// MonitorApps blocks, probing deployed apps and reporting changes, until ctx ends.
+	MonitorApps(ctx context.Context, emit Emit)
 	Nodes(ctx context.Context) []*agentv1.NodeInfo
 	Templates(ctx context.Context) []string
 	Bridges(ctx context.Context) []string

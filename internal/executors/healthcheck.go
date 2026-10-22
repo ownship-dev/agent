@@ -10,15 +10,19 @@ import (
 	agentv1 "github.com/ownship/agent/internal/gen/ownship/agent/v1"
 )
 
-// waitHealthy polls until a 2xx or the timeout; auth lets the check pass Basic Auth.
-func waitHealthy(ctx context.Context, baseURL string, hc *agentv1.HealthcheckConfig, auth *agentv1.BasicAuth, logLine LogFunc) error {
-	path := hc.GetPath()
+func normalizeHealthPath(path string) string {
 	if path == "" {
-		path = "/"
+		return "/"
 	}
 	if !strings.HasPrefix(path, "/") {
-		path = "/" + path
+		return "/" + path
 	}
+	return path
+}
+
+// waitHealthy polls until a 2xx or the timeout; auth lets the check pass Basic Auth.
+func waitHealthy(ctx context.Context, baseURL string, hc *agentv1.HealthcheckConfig, auth *agentv1.BasicAuth, logLine LogFunc) error {
+	path := normalizeHealthPath(hc.GetPath())
 	timeout := time.Duration(hc.GetTimeoutSeconds()) * time.Second
 	if timeout <= 0 {
 		timeout = 60 * time.Second

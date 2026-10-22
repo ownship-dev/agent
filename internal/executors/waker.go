@@ -40,9 +40,10 @@ type wakerEntry struct {
 }
 
 type Waker struct {
-	orch Orchestrator
-	rtl  *RuntimeLogs
-	emit atomic.Value
+	orch   Orchestrator
+	rtl    *RuntimeLogs
+	emit   atomic.Value
+	onWake func(workload string)
 
 	mu      sync.Mutex
 	entries map[string]*wakerEntry
@@ -58,6 +59,9 @@ func NewWaker(orch Orchestrator, rtl *RuntimeLogs) *Waker {
 }
 
 func (w *Waker) SetEmit(emit Emit) { w.emit.Store(emit) }
+
+// SetOnWake is called once a request-driven wake has passed its health gate.
+func (w *Waker) SetOnWake(fn func(workload string)) { w.onWake = fn }
 
 // URL is what the tunnel routes to; OWNSHIP_WAKER_URL overrides it.
 func (w *Waker) URL() string {
@@ -243,6 +247,9 @@ func (w *Waker) wake(entry *wakerEntry) {
 
 	if err == nil {
 		w.rtl.Start(entry.workload)
+		if w.onWake != nil {
+			w.onWake(entry.workload)
+		}
 		emit := w.emit.Load().(Emit)
 		_ = emit(sleepState(entry.workload, false))
 	}

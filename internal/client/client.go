@@ -155,6 +155,7 @@ func (c *Client) session(ctx context.Context) error {
 	_ = emit(c.stateEvent(ctx))
 	go c.heartbeat(ctx, emit)
 	go c.sampleMetrics(ctx, emit)
+	go c.exec.MonitorApps(ctx, emit)
 	go c.reportState(ctx, emit)
 	go c.reportHardware(ctx, emit)
 	go c.sweepVMImages(ctx, emit)

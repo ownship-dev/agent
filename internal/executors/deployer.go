@@ -27,6 +27,7 @@ type Deployer struct {
 	services      *serviceState
 	workspacesDir string
 	waker         *Waker
+	appmon        *AppMonitor
 	// Private ingress; nil disables it.
 	lan *lanproxy.Proxy
 	ts  *tsingress.Ingress
@@ -44,7 +45,7 @@ func (d *Deployer) ServiceURL(workloadID string) (string, bool) {
 }
 
 func NewDeployer(orch Orchestrator, rtl *RuntimeLogs, waker *Waker, lan *lanproxy.Proxy, ts *tsingress.Ingress, workspacesDir, serviceStatePath string) *Deployer {
-	return &Deployer{
+	d := &Deployer{
 		orch:          orch,
 		cf:            cloudflare.NewRouter(),
 		rtl:           rtl,
@@ -53,7 +54,10 @@ func NewDeployer(orch Orchestrator, rtl *RuntimeLogs, waker *Waker, lan *lanprox
 		waker:         waker,
 		lan:           lan,
 		ts:            ts,
+		appmon:        NewAppMonitor(filepath.Join(filepath.Dir(serviceStatePath), "appmon.json")),
 	}
+	waker.SetOnWake(d.appmon.Resume)
+	return d
 }
 
 // GPUs reports this machine's GPUs. On Proxmox the NVIDIA runtime that matters is inside
@@ -126,6 +130,8 @@ func (d *Deployer) Deploy(ctx context.Context, cmd *agentv1.Deploy, emit Emit) e
 	logLine := func(stream agentv1.LogStream, text string) {
 		_ = emit(logChunk(id, seq.Add(1), stream, text))
 	}
+	// The old address is stale from here; Register below starts a fresh watch.
+	d.appmon.Pause(wl)
 	// Refuse before a host build, which would only be thrown away.
 	if normalizeGuestKind(cmd.GetGuestKind()) == GuestVM && d.orch.HostBuilds() {
 		return errVMNeedsProxmox
@@ -204,6 +210,9 @@ func (d *Deployer) Deploy(ctx context.Context, cmd *agentv1.Deploy, emit Emit) e
 	}
 
 	d.runPostDeployHook(ctx, cmd, wl, id, logLine, emit)
+	if cmd.GetServiceId() == "" && cmd.GetPreviewId() == "" {
+		d.appmon.Register(wl, target.URL, cmd.GetHealth(), cmd.GetBasicAuth())
+	}
 
 	if err := emitLifecycle(emit, id, agentv1.Phase_PHASE_LIVE, "workload running"); err != nil {
 		return err
@@ -659,6 +668,7 @@ func (d *Deployer) Destroy(ctx context.Context, cmd *agentv1.Destroy, emit Emit)
 	wl := workloadID(cmd.GetProjectId(), cmd.GetPreviewId(), cmd.GetServiceId())
 	d.rtl.Stop(wl)
 	d.waker.Unregister(wl)
+	d.appmon.Remove(wl)
 	d.services.remove(wl)
 	if d.lan != nil {
 		_ = d.lan.Drop(wl)
@@ -786,6 +796,7 @@ func (d *Deployer) Sleep(ctx context.Context, cmd *agentv1.Sleep, emit Emit) err
 	}
 	// With wake-on-request the waker now answers its traffic; it was already the route target.
 	d.waker.MarkAsleep(cmd.GetProjectId())
+	d.appmon.Pause(cmd.GetProjectId())
 	return emit(sleepState(cmd.GetProjectId(), true))
 }
 
@@ -794,6 +805,7 @@ func (d *Deployer) Wake(ctx context.Context, cmd *agentv1.Wake, emit Emit) error
 		return err
 	}
 	d.waker.MarkAwake(cmd.GetProjectId())
+	d.appmon.Resume(cmd.GetProjectId())
 	d.rtl.Start(cmd.GetProjectId())
 	return emit(sleepState(cmd.GetProjectId(), false))
 }
@@ -889,6 +901,12 @@ func (d *Deployer) CheckImageUpdate(ctx context.Context, cmd *agentv1.CheckImage
 			},
 		},
 	})
+}
+
+// MonitorApps probes deployed apps until the session ends, reporting through this session's emit.
+func (d *Deployer) MonitorApps(ctx context.Context, emit Emit) {
+	d.appmon.SetEmit(emit)
+	d.appmon.Run(ctx)
 }
 
 func (d *Deployer) Sample(ctx context.Context) []*agentv1.ProjectMetrics {
