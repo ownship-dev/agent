@@ -21,6 +21,7 @@ import (
 	"github.com/ownship/agent/internal/executors"
 	agentv1 "github.com/ownship/agent/internal/gen/ownship/agent/v1"
 	"github.com/ownship/agent/internal/lanproxy"
+	"github.com/ownship/agent/internal/logging"
 	"github.com/ownship/agent/internal/telemetry"
 	"github.com/ownship/agent/internal/token"
 	"github.com/ownship/agent/internal/tsingress"
@@ -28,7 +29,7 @@ import (
 )
 
 func main() {
-	log := slog.New(slog.NewTextHandler(os.Stderr, nil))
+	log := logging.New(os.Stderr, os.Getenv("LOG_FORMAT"), os.Getenv("LOG_LEVEL"), config.Version)
 
 	if len(os.Args) < 2 {
 		usage()
