@@ -27,6 +27,11 @@ func (lxcGuest) Running(ctx context.Context, vmid string) bool {
 	return strings.Contains(string(out), "running")
 }
 
+func (lxcGuest) Stopped(ctx context.Context, vmid string) bool {
+	out, err := pct(ctx, "status", vmid).Output()
+	return err == nil && strings.Contains(string(out), "status: stopped")
+}
+
 func (lxcGuest) Start(ctx context.Context, vmid string) error {
 	if out, err := pct(ctx, "start", vmid).CombinedOutput(); err != nil {
 		return fmt.Errorf("start lxc: %s", strings.TrimSpace(string(out)))

@@ -225,6 +225,11 @@ func (g *vmGuest) Running(ctx context.Context, vmid string) bool {
 	return strings.Contains(string(out), "status: running")
 }
 
+func (g *vmGuest) Stopped(ctx context.Context, vmid string) bool {
+	out, err := qmOutput(ctx, "status", vmid)
+	return err == nil && strings.Contains(string(out), "status: stopped")
+}
+
 // Start boots the VM and waits until the guest agent answers and SSH works.
 func (g *vmGuest) Start(ctx context.Context, vmid string) error {
 	g.forgetIP(vmid)

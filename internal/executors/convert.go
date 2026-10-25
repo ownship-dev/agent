@@ -359,6 +359,8 @@ func convertResult(migrationID, workloadID, step, vmid string, err error) *agent
 }
 
 func (d *Deployer) ConvertPrepare(ctx context.Context, cmd *agentv1.ConvertPrepare, emit Emit) error {
+	// The old guest is stopped on purpose; the deploy into the new one registers a fresh watch.
+	d.appmon.Pause(cmd.GetWorkloadId())
 	vmid, err := "", errNoConvert
 	if c, ok := d.orch.(Converter); ok {
 		vmid, err = c.ConvertPrepare(ctx, ConvertRequest{
@@ -386,6 +388,7 @@ func (d *Deployer) ConvertRollback(ctx context.Context, cmd *agentv1.ConvertRoll
 		err = c.ConvertRollback(ctx, cmd.GetWorkloadId())
 	}
 	if err == nil {
+		d.appmon.Resume(cmd.GetWorkloadId())
 		_ = emit(StateEvent(d.List(ctx)))
 	}
 	return emit(convertResult(cmd.GetMigrationId(), cmd.GetWorkloadId(), "rollback", "", err))

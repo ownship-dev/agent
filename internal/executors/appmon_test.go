@@ -141,3 +141,47 @@ func TestAppMonitorUnreachableAppIsRefused(t *testing.T) {
 		t.Fatalf("got %+v", got)
 	}
 }
+
+func TestAppMonitorAGuestStoppedInProxmoxIsReportedAtOnce(t *testing.T) {
+	h := newAppmonHarness(t)
+	var stopped atomic.Bool
+	h.m.SetGuestStopped(func(context.Context, string) bool { return stopped.Load() })
+	h.tick(0)
+
+	h.status.Store(503)
+	stopped.Store(true)
+	h.tick(30 * time.Second)
+	if len(h.events) != 2 || h.events[1].Healthy || !h.events[1].GuestStopped {
+		t.Fatalf("a stopped guest is reported on the first miss: %+v", h.events)
+	}
+
+	// Started again but still booting: it stays "stopped" until its app has had its misses.
+	stopped.Store(false)
+	h.tick(30 * time.Second)
+	h.tick(30 * time.Second)
+	if len(h.events) != 2 {
+		t.Fatalf("no report while the app boots: %+v", h.events)
+	}
+	h.tick(30 * time.Second)
+	if len(h.events) != 3 || h.events[2].Healthy || h.events[2].GuestStopped {
+		t.Fatalf("a running guest whose app never answers is down: %+v", h.events)
+	}
+
+	h.status.Store(200)
+	h.tick(30 * time.Second)
+	if len(h.events) != 4 || !h.events[3].Healthy || h.events[3].GuestStopped {
+		t.Fatalf("events = %+v", h.events)
+	}
+}
+
+func TestAppMonitorAStoppedGuestThatComesBackHealthyRecovers(t *testing.T) {
+	h := newAppmonHarness(t)
+	h.m.SetGuestStopped(func(context.Context, string) bool { return true })
+	h.status.Store(503)
+	h.tick(0)
+	h.status.Store(200)
+	h.tick(30 * time.Second)
+	if len(h.events) != 2 || !h.events[0].GuestStopped || !h.events[1].Healthy {
+		t.Fatalf("events = %+v", h.events)
+	}
+}

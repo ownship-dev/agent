@@ -163,6 +163,12 @@ func (o *ProxmoxLXC) guestFor(workloadID string) (guestRef, bool) {
 	return guestRef{}, false
 }
 
+// GuestStopped tells the app monitor that a failing app is a guest someone shut down in Proxmox.
+func (o *ProxmoxLXC) GuestStopped(ctx context.Context, workloadID string) bool {
+	cur, ok := o.guestFor(workloadID)
+	return ok && cur.g.Stopped(ctx, cur.vmid)
+}
+
 func (o *ProxmoxLXC) vmWorkload(workloadID string) (vmWorkload, bool) {
 	if o.vms == nil {
 		return vmWorkload{}, false

@@ -38,6 +38,8 @@ type AppMonitor struct {
 	mu      sync.Mutex
 	entries map[string]appEntry
 	state   map[string]*appState
+	// Set on Proxmox: tells a guest shut down outside Ownship from an app that stopped answering.
+	stopped func(ctx context.Context, workload string) bool
 }
 
 type appEntry struct {
@@ -51,6 +53,7 @@ type appState struct {
 	fails    int
 	known    bool
 	healthy  bool
+	stopped  bool
 	paused   bool
 	lastEmit time.Time
 }
@@ -76,6 +79,14 @@ func NewAppMonitor(path string) *AppMonitor {
 		}
 	}
 	return m
+}
+
+func (m *AppMonitor) SetGuestStopped(fn func(ctx context.Context, workload string) bool) {
+	if m != nil {
+		m.mu.Lock()
+		m.stopped = fn
+		m.mu.Unlock()
+	}
 }
 
 func (m *AppMonitor) SetEmit(emit Emit) {
@@ -185,9 +196,10 @@ type appProbe struct {
 }
 
 type appResult struct {
-	ok     bool
-	status int
-	reason string
+	ok      bool
+	status  int
+	reason  string
+	stopped bool
 }
 
 // probeOnce checks every unpaused workload and reports the ones whose state changed or is due a keepalive.
@@ -200,6 +212,7 @@ func (m *AppMonitor) probeOnce(ctx context.Context, now time.Time) {
 		}
 		due = append(due, appProbe{wl, e})
 	}
+	stopped := m.stopped
 	m.mu.Unlock()
 
 	results := make([]appResult, len(due))
@@ -211,7 +224,11 @@ func (m *AppMonitor) probeOnce(ctx context.Context, now time.Time) {
 		go func() {
 			defer wg.Done()
 			defer func() { <-sem }()
-			results[i] = m.probe(ctx, p.entry)
+			r := m.probe(ctx, p.entry)
+			if !r.ok && stopped != nil && stopped(ctx, p.workload) {
+				r = appResult{reason: "guest stopped outside Ownship", stopped: true}
+			}
+			results[i] = r
 		}()
 	}
 	wg.Wait()
@@ -268,15 +285,22 @@ func (m *AppMonitor) apply(workload string, r appResult, now time.Time) *agentv1
 		return nil
 	}
 	changed := false
-	if r.ok {
+	switch {
+	case r.ok:
 		st.fails = 0
-		changed = !st.known || !st.healthy
-		st.known, st.healthy = true, true
-	} else {
+		changed = !st.known || !st.healthy || st.stopped
+		st.known, st.healthy, st.stopped = true, true, false
+	case r.stopped:
+		// A shutdown is certain at once; no misses to wait out.
+		st.fails = 0
+		changed = !st.known || st.healthy || !st.stopped
+		st.known, st.healthy, st.stopped = true, false, true
+	default:
+		// A guest started again stays "stopped" while its app gets its misses.
 		st.fails++
 		if st.fails >= appFailuresToFail {
-			changed = !st.known || st.healthy
-			st.known, st.healthy = true, false
+			changed = !st.known || st.healthy || st.stopped
+			st.known, st.healthy, st.stopped = true, false, false
 		}
 	}
 	if !changed && !(st.known && now.Sub(st.lastEmit) >= appKeepalive) {
@@ -288,10 +312,11 @@ func (m *AppMonitor) apply(workload string, r appResult, now time.Time) *agentv1
 		reason = r.reason
 	}
 	return &agentv1.Event{Payload: &agentv1.Event_AppHealth{AppHealth: &agentv1.AppHealth{
-		ProjectId:  workload,
-		Healthy:    st.healthy,
-		Reason:     reason,
-		StatusCode: uint32(r.status),
-		Ts:         now.UnixMilli(),
+		ProjectId:    workload,
+		Healthy:      st.healthy,
+		Reason:       reason,
+		StatusCode:   uint32(r.status),
+		Ts:           now.UnixMilli(),
+		GuestStopped: st.stopped,
 	}}}
 }

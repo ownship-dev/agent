@@ -202,7 +202,10 @@ func (d *Deployer) runRestore(ctx context.Context, cmd *agentv1.RestoreBackup) e
 	// File-based restores replace data under the engine, so stop it first.
 	stopped := false
 	if cmd.GetVolumeName() != "" || (isService && engine.restoreVolumeFile != "") {
+		// A planned stop, not an outage: the watch restarts clean once the workload is back.
+		d.appmon.Pause(wl)
 		if err := d.orch.Stop(ctx, wl); err != nil {
+			d.appmon.Resume(wl)
 			return fmt.Errorf("stop workload: %w", err)
 		}
 		stopped = true
@@ -210,6 +213,7 @@ func (d *Deployer) runRestore(ctx context.Context, cmd *agentv1.RestoreBackup) e
 			startCtx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 			defer cancel()
 			_ = d.orch.Start(startCtx, wl)
+			d.appmon.Resume(wl)
 		}()
 	}
 

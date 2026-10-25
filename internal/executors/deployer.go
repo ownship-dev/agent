@@ -57,6 +57,11 @@ func NewDeployer(orch Orchestrator, rtl *RuntimeLogs, waker *Waker, lan *lanprox
 		appmon:        NewAppMonitor(filepath.Join(filepath.Dir(serviceStatePath), "appmon.json")),
 	}
 	waker.SetOnWake(d.appmon.Resume)
+	if gs, ok := orch.(interface {
+		GuestStopped(ctx context.Context, workloadID string) bool
+	}); ok {
+		d.appmon.SetGuestStopped(gs.GuestStopped)
+	}
 	return d
 }
 

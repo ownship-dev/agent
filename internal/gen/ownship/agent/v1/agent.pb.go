@@ -5058,9 +5058,11 @@ type AppHealth struct {
 	ProjectId string                 `protobuf:"bytes,1,opt,name=project_id,json=projectId,proto3" json:"project_id,omitempty"`
 	Healthy   bool                   `protobuf:"varint,2,opt,name=healthy,proto3" json:"healthy,omitempty"`
 	// Why it is unhealthy, e.g. "status 503" or "connection refused"; empty when healthy.
-	Reason        string `protobuf:"bytes,3,opt,name=reason,proto3" json:"reason,omitempty"`
-	StatusCode    uint32 `protobuf:"varint,4,opt,name=status_code,json=statusCode,proto3" json:"status_code,omitempty"`
-	Ts            int64  `protobuf:"varint,5,opt,name=ts,proto3" json:"ts,omitempty"`
+	Reason     string `protobuf:"bytes,3,opt,name=reason,proto3" json:"reason,omitempty"`
+	StatusCode uint32 `protobuf:"varint,4,opt,name=status_code,json=statusCode,proto3" json:"status_code,omitempty"`
+	Ts         int64  `protobuf:"varint,5,opt,name=ts,proto3" json:"ts,omitempty"`
+	// The guest itself is stopped, e.g. shut down from Proxmox: not an outage, nothing to page.
+	GuestStopped  bool `protobuf:"varint,6,opt,name=guest_stopped,json=guestStopped,proto3" json:"guest_stopped,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -5128,6 +5130,13 @@ func (x *AppHealth) GetTs() int64 {
 		return x.Ts
 	}
 	return 0
+}
+
+func (x *AppHealth) GetGuestStopped() bool {
+	if x != nil {
+		return x.GuestStopped
+	}
+	return false
 }
 
 type ConvertResult struct {
@@ -8898,7 +8907,7 @@ const file_ownship_agent_v1_agent_proto_rawDesc = "" +
 	"\x15vm_image_fetch_status\x18! \x01(\v2$.ownship.agent.v1.VmImageFetchStatusH\x00R\x12vmImageFetchStatus\x12<\n" +
 	"\n" +
 	"app_health\x18\" \x01(\v2\x1b.ownship.agent.v1.AppHealthH\x00R\tappHealthB\t\n" +
-	"\apayloadJ\x04\b\x11\x10\x12\"\x8d\x01\n" +
+	"\apayloadJ\x04\b\x11\x10\x12\"\xb2\x01\n" +
 	"\tAppHealth\x12\x1d\n" +
 	"\n" +
 	"project_id\x18\x01 \x01(\tR\tprojectId\x12\x18\n" +
@@ -8906,7 +8915,8 @@ const file_ownship_agent_v1_agent_proto_rawDesc = "" +
 	"\x06reason\x18\x03 \x01(\tR\x06reason\x12\x1f\n" +
 	"\vstatus_code\x18\x04 \x01(\rR\n" +
 	"statusCode\x12\x0e\n" +
-	"\x02ts\x18\x05 \x01(\x03R\x02ts\"\xa1\x01\n" +
+	"\x02ts\x18\x05 \x01(\x03R\x02ts\x12#\n" +
+	"\rguest_stopped\x18\x06 \x01(\bR\fguestStopped\"\xa1\x01\n" +
 	"\rConvertResult\x12!\n" +
 	"\fmigration_id\x18\x01 \x01(\tR\vmigrationId\x12\x1f\n" +
 	"\vworkload_id\x18\x02 \x01(\tR\n" +

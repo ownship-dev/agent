@@ -79,6 +79,8 @@ type guest interface {
 	Label(vmid string) string
 	ExecPrefix(ctx context.Context, vmid string, tty bool) (GuestPrefix, error)
 	Running(ctx context.Context, vmid string) bool
+	// Stopped is true only when the status read worked and says stopped, so a failed read is not a shutdown.
+	Stopped(ctx context.Context, vmid string) bool
 	Start(ctx context.Context, vmid string) error
 	// Ready waits until commands can run in a started guest.
 	Ready(ctx context.Context, vmid string) error
