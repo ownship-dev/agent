@@ -284,8 +284,32 @@ func checkSidecarSum(path, sum string) error {
 	return nil
 }
 
-// reImportedVolid finds the volume qm importdisk created ("unused0:local-lvm:vm-9000-disk-0").
-var reImportedVolid = regexp.MustCompile(`unused\d+:([A-Za-z0-9][A-Za-z0-9._:/-]*)`)
+// reImportedVolid finds the volume qm importdisk created, in the old output
+// ("as 'unused0:local-lvm:vm-9000-disk-0'") and the PVE 8.1+ one ("unused0: successfully imported disk 'local-lvm:...'").
+var reImportedVolid = regexp.MustCompile(`unused\d+:(?: successfully imported disk ')?([A-Za-z0-9][A-Za-z0-9._:/-]*)`)
+
+// reUnusedConf is an unusedN line of qm config, the fallback when the output changes again.
+var reUnusedConf = regexp.MustCompile(`(?m)^unused\d+: ([A-Za-z0-9][A-Za-z0-9._:/-]*)\s*$`)
+
+// importedVolid reads the disk qm importdisk attached, from its output or else from the config.
+func importedVolid(ctx context.Context, vmid string, out []byte) (string, error) {
+	if m := reImportedVolid.FindSubmatch(out); m != nil && strings.Contains(string(m[1]), ":") {
+		return string(m[1]), nil
+	}
+	conf, err := qmOutput(ctx, "config", vmid)
+	if err != nil {
+		return "", qmErr("read VM template config", conf, err)
+	}
+	if m := reUnusedConf.FindSubmatch(conf); m != nil {
+		return string(m[1]), nil
+	}
+	return "", fmt.Errorf("import VM image: could not find the imported disk (qm said: %s)", strings.TrimSpace(lastLine(out)))
+}
+
+func lastLine(b []byte) string {
+	lines := strings.Split(strings.TrimSpace(string(b)), "\n")
+	return lines[len(lines)-1]
+}
 
 // ensureVMBase returns the template for img, importing it on first use. A changed file (new
 // sha256) gets a new template and the old one is removed: clones are full, so none needs it.
@@ -339,12 +363,12 @@ func (o *ProxmoxLXC) ensureVMBase(ctx context.Context, img vmImageFile, logLine 
 	if err != nil {
 		return fail(qmErr("import VM image", out, err))
 	}
-	m := reImportedVolid.FindSubmatch(out)
-	if m == nil {
-		return fail(fmt.Errorf("import VM image: could not find the imported disk in qm's output"))
+	volid, err := importedVolid(ctx, vmid, out)
+	if err != nil {
+		return fail(err)
 	}
 	if out, err := qmOutput(ctx, "set", vmid,
-		"--scsi0", string(m[1])+",discard=on",
+		"--scsi0", volid+",discard=on",
 		"--boot", "order=scsi0",
 		"--ide2", o.cfg.Storage+":cloudinit"); err != nil {
 		return fail(qmErr("attach VM template disk", out, err))

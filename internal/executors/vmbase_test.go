@@ -154,3 +154,24 @@ func TestEnsureVMBaseCleansUpAFailedImport(t *testing.T) {
 		t.Fatal("a failed import must not be recorded")
 	}
 }
+
+// PVE 8.1+ reports the disk differently; an unknown wording falls back to qm config.
+func TestImportedVolidReadsEveryQmWording(t *testing.T) {
+	for name, tc := range map[string]struct{ out, conf, want string }{
+		"old":      {out: "Successfully imported disk as 'unused0:local-lvm:vm-9000-disk-0'\n", want: "local-lvm:vm-9000-disk-0"},
+		"pve8":     {out: "transferred 2.0 GiB\nunused0: successfully imported disk 'local-zfs:vm-9000-disk-0'\n", want: "local-zfs:vm-9000-disk-0"},
+		"fallback": {out: "done\n", conf: "boot: order=net0\nunused0: local:9000/vm-9000-disk-0.raw\n", want: "local:9000/vm-9000-disk-0.raw"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			fakeQM(t, func(args []string) ([]byte, error) { return []byte(tc.conf), nil })
+			got, err := importedVolid(context.Background(), "9000", []byte(tc.out))
+			if err != nil || got != tc.want {
+				t.Fatalf("%q %v", got, err)
+			}
+		})
+	}
+	fakeQM(t, func(args []string) ([]byte, error) { return []byte("boot: order=net0\n"), nil })
+	if _, err := importedVolid(context.Background(), "9000", []byte("odd\n")); err == nil || !strings.Contains(err.Error(), "odd") {
+		t.Fatalf("want an error quoting qm, got %v", err)
+	}
+}
