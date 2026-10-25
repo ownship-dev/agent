@@ -62,13 +62,29 @@ func (m *TerminalManager) Handle(ctx context.Context, in *agentv1.TerminalInput)
 	}
 }
 
+// shellBootstrap opens the best interactive shell the image has, with a prompt that shows where
+// you are (user@host:~/dir, # for root, $ otherwise) instead of a bare "#". Constant, so nothing user-given is parsed.
+const shellBootstrap = `export TERM=xterm-256color COLORTERM=truecolor
+export LANG="${LANG:-C.UTF-8}" HOME="${HOME:-/root}"
+p='\[\033[1;32m\]\u@\h\[\033[0m\]:\[\033[1;34m\]\w\[\033[0m\]\$ '
+if command -v bash >/dev/null 2>&1; then export PS1="$p"; exec bash -i; fi
+case "$(readlink -f /bin/sh 2>/dev/null)" in
+*busybox*) export PS1='\u@\h:\w\$ ' ;;
+*) if [ "$(id -u 2>/dev/null)" = 0 ]; then s='#'; else s='$'; fi
+  u="$(id -un 2>/dev/null || echo "$USER")"; h="$(hostname 2>/dev/null || cat /etc/hostname 2>/dev/null)"
+  export PS1="$u@${h%%.*}:\${PWD}$s " ;;
+esac
+exec sh -i`
+
+var interactiveShell = []string{"sh", "-c", shellBootstrap}
+
 func (m *TerminalManager) open(ctx context.Context, in *agentv1.TerminalInput) {
 	m.close(in.GetSessionId()) // replace any stale session
 
 	// A shell in the project's workload, or a DB console in a managed service's. Credentials
 	// come from the container's own env, never argv or the wire.
 	workload := in.GetProjectId()
-	inner := []string{"sh"}
+	inner := interactiveShell
 	lxc := in.GetTarget() == agentv1.TerminalTarget_TERMINAL_TARGET_LXC
 	if ex := in.GetExec(); ex != nil && ex.GetServiceId() != "" && len(ex.GetArgv()) > 0 {
 		workload = ex.GetServiceId()
