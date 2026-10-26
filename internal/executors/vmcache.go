@@ -221,6 +221,10 @@ func (o *ProxmoxLXC) allVMImages(ctx context.Context) (images []vmImageFile, dir
 // resolveVMImage finds the image a VM boots from: the owner's file wins, then the cache, then
 // a fetch from src. A catalogue copy is re-checked against the vendor once it expired.
 func (o *ProxmoxLXC) resolveVMImage(ctx context.Context, id string, src *agentv1.VmImageSource, logLine LogFunc) (vmImageFile, error) {
+	return o.resolveVMImageWith(ctx, id, src, logLine, nil)
+}
+
+func (o *ProxmoxLXC) resolveVMImageWith(ctx context.Context, id string, src *agentv1.VmImageSource, logLine LogFunc, progress func(done, total int64)) (vmImageFile, error) {
 	if !validVMImageID(id) {
 		return vmImageFile{}, fmt.Errorf("invalid VM image id %q", id)
 	}
@@ -256,12 +260,12 @@ func (o *ProxmoxLXC) resolveVMImage(ctx context.Context, id string, src *agentv1
 	if metaErr == nil && m.Source == sourceCatalog {
 		prev = &m
 	}
-	return o.fetchCatalog(ctx, dir, id, src, prev, logLine)
+	return o.fetchCatalog(ctx, dir, id, src, prev, logLine, progress)
 }
 
 // fetchCatalog proves the checksum file first, then downloads only if the cached copy no
 // longer matches it, and moves the image into the cache once hash and format check out.
-func (o *ProxmoxLXC) fetchCatalog(ctx context.Context, dir, id string, src *agentv1.VmImageSource, prev *cacheMeta, logLine LogFunc) (vmImageFile, error) {
+func (o *ProxmoxLXC) fetchCatalog(ctx context.Context, dir, id string, src *agentv1.VmImageSource, prev *cacheMeta, logLine LogFunc, progress func(done, total int64)) (vmImageFile, error) {
 	u, err := vmfetch.CheckURL(src.GetUrl(), vmfetch.Mirror)
 	if err != nil {
 		return vmImageFile{}, fmt.Errorf("VM image %s: %w", id, err)
@@ -308,7 +312,7 @@ func (o *ProxmoxLXC) fetchCatalog(ctx context.Context, dir, id string, src *agen
 			return fmt.Errorf("its %s does not match the vendor's checksum file", want.Algo)
 		}
 		return nil
-	}, progressLogger(logLine, id))
+	}, progressLogger(logLine, id, progress))
 	if err != nil {
 		return vmImageFile{}, fmt.Errorf("VM image %s: %w", id, err)
 	}
@@ -370,9 +374,12 @@ func downloadInto(ctx context.Context, dir, id, raw string, p vmfetch.Policy, ve
 }
 
 // progressLogger logs every tenth of a download, or every 256 MiB when the size is unknown.
-func progressLogger(logLine LogFunc, id string) func(done, total int64) {
+func progressLogger(logLine LogFunc, id string, progress func(done, total int64)) func(done, total int64) {
 	var next int64
 	return func(done, total int64) {
+		if progress != nil {
+			progress(done, total)
+		}
 		step := int64(256 << 20)
 		if total > 0 {
 			step = total / 10
@@ -458,6 +465,26 @@ func (o *ProxmoxLXC) FetchLinkImage(ctx context.Context, cmd *agentv1.FetchVmIma
 		return fail(err)
 	}
 	status("done", sums.Bytes, sums.Bytes, nil)
+	return nil
+}
+
+// FetchCatalogImage downloads a catalogue image ahead of the first VM that needs it, checked
+// exactly as a deploy would; a copy still matching upstream just gets its 15 days back.
+func (o *ProxmoxLXC) FetchCatalogImage(ctx context.Context, id string, src *agentv1.VmImageSource, status FetchStatus) error {
+	if src.GetUrl() == "" {
+		err := fmt.Errorf("no catalogue source for %s", id)
+		status("failed", 0, 0, err)
+		return err
+	}
+	status("downloading", 0, 0, nil)
+	img, err := o.resolveVMImageWith(ctx, id, src, func(agentv1.LogStream, string) {},
+		func(done, total int64) { status("downloading", done, total, nil) })
+	if err != nil {
+		status("failed", 0, 0, err)
+		return err
+	}
+	size := int64(img.Info.GetSizeBytes())
+	status("done", size, size, nil)
 	return nil
 }
 

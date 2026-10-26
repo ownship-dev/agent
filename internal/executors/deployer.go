@@ -768,6 +768,9 @@ var errNoVMImages = errors.New("VM images need a Proxmox host")
 
 func (d *Deployer) FetchVMImage(ctx context.Context, cmd *agentv1.FetchVmImage, status FetchStatus) error {
 	if p, ok := d.orch.(*ProxmoxLXC); ok {
+		if cmd.GetSource() != nil {
+			return p.FetchCatalogImage(ctx, cmd.GetImageId(), cmd.GetSource(), status)
+		}
 		return p.FetchLinkImage(ctx, cmd, status)
 	}
 	status("failed", 0, 0, errNoVMImages)
@@ -813,6 +816,15 @@ func (d *Deployer) Wake(ctx context.Context, cmd *agentv1.Wake, emit Emit) error
 	d.appmon.Resume(cmd.GetProjectId())
 	d.rtl.Start(cmd.GetProjectId())
 	return emit(sleepState(cmd.GetProjectId(), false))
+}
+
+// SetRootPassword resets a guest's root password the owner may have changed inside it.
+func (d *Deployer) SetRootPassword(ctx context.Context, cmd *agentv1.SetRootPassword) error {
+	s, ok := d.orch.(rootPasswordSetter)
+	if !ok {
+		return errors.New("only Proxmox guests have a root password")
+	}
+	return s.SetRootPassword(ctx, cmd.GetProjectId(), cmd.GetPassword())
 }
 
 // runHook runs a user command in the workload, like cron, streaming into the deploy log.

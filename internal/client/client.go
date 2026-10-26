@@ -301,7 +301,7 @@ func withVMs(h *agentv1.Hello, vm executors.VMReport) {
 	h.VmBlockedReason = vm.BlockedReason
 	h.VmImageDirError = vm.DirError
 	if vm.Capable {
-		h.Capabilities = append(slices.Clone(h.Capabilities), GuestVMCapability, VMImageFetchCapability)
+		h.Capabilities = append(slices.Clone(h.Capabilities), GuestVMCapability, VMImageFetchCapability, VMImagePrefetchCapability)
 	}
 	if vm.Convert {
 		h.Capabilities = append(slices.Clone(h.Capabilities), GuestConvertCapability)
@@ -311,6 +311,10 @@ func withVMs(h *agentv1.Hello, vm executors.VMReport) {
 // VMImageFetchCapability matches VM_IMAGE_FETCH_CAPABILITY in @ownship/core: this agent fetches
 // catalogue images and handles FetchVmImage / RemoveVmImage.
 const VMImageFetchCapability = "vm_image_fetch"
+
+// VMImagePrefetchCapability matches VM_IMAGE_PREFETCH_CAPABILITY in @ownship/core: a FetchVmImage
+// may carry a catalogue source instead of a link.
+const VMImagePrefetchCapability = "vm_image_prefetch"
 
 // A link fetch may take long on a slow line; a stall still fails within the idle timeout.
 const vmImageFetchTimeout = 3 * time.Hour

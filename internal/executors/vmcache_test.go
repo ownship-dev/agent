@@ -208,7 +208,7 @@ func TestRenewWithoutDownloadWhenUnchanged(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	img, err := o.fetchCatalog(context.Background(), dir, "debian-12", debianSource(), &m, noLog)
+	img, err := o.fetchCatalog(context.Background(), dir, "debian-12", debianSource(), &m, noLog, nil)
 	if err != nil || v.downloads != 1 {
 		t.Fatalf("renew: downloads=%d err=%v", v.downloads, err)
 	}
@@ -398,5 +398,35 @@ func TestSweepSkipsLinkImagesAndLockedCopies(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(o.vmCacheDir(), "rhel-9.img")); err != nil {
 		t.Fatal("a link image is never swept")
+	}
+}
+
+func TestCatalogImageIsFetchedAheadOfAVM(t *testing.T) {
+	o := cacheProxmox(t)
+	v := &fakeVendor{}
+	v.publish([]byte("debian 12 image"))
+	installVendor(t, v)
+	var states []string
+	status := func(state string, done, total int64, err error) { states = append(states, state) }
+
+	if err := o.FetchCatalogImage(context.Background(), "debian-12", debianSource(), status); err != nil {
+		t.Fatal(err)
+	}
+	if states[len(states)-1] != "done" || v.downloads != 1 {
+		t.Fatalf("states=%v downloads=%d", states, v.downloads)
+	}
+	if r := o.VMReport(context.Background()); len(r.Images) != 1 || r.Images[0].GetSource() != "catalog" {
+		t.Fatalf("report = %v", r.Images)
+	}
+	// The deploy that follows reuses the copy.
+	if _, err := o.resolveVMImage(context.Background(), "debian-12", debianSource(), noLog); err != nil || v.downloads != 1 {
+		t.Fatalf("downloads=%d err=%v", v.downloads, err)
+	}
+
+	v.publish([]byte("tampered"))
+	v.checksums = strings.Repeat("0", 128) + "  debian-12-genericcloud-amd64.qcow2\n"
+	states = nil
+	if err := o.FetchCatalogImage(context.Background(), "debian-13", debianSource(), status); err == nil || states[len(states)-1] != "failed" {
+		t.Fatalf("a mismatch fails: states=%v err=%v", states, err)
 	}
 }

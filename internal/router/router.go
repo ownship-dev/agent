@@ -23,7 +23,7 @@ const seenCap = 2048
 
 // Capabilities names commands and behaviours added after the original set, announced in Hello.
 // A new live-channel command joins here, or the control plane refuses it.
-var Capabilities = []string{"db_query", "self_update", "adopt", "mongo_typed_json", "uninstall", "vm_workloads"}
+var Capabilities = []string{"db_query", "self_update", "adopt", "mongo_typed_json", "uninstall", "vm_workloads", "root_password"}
 
 type Router struct {
 	exec executors.Executor
@@ -156,6 +156,18 @@ func (r *Router) Handle(ctx context.Context, cmd *agentv1.Command, emit executor
 		r.run(ctx, "", emit, func(c context.Context) error {
 			return r.exec.Adopt(c, cmd.GetAdopt(), emit)
 		})
+	case *agentv1.Command_SetRootPassword:
+		r.run(ctx, "", emit, func(c context.Context) error {
+			err := fmt.Errorf("this agent can't set guest passwords")
+			if p, ok := r.exec.(rootPasswordExecutor); ok {
+				err = p.SetRootPassword(c, cmd.GetSetRootPassword())
+			}
+			res := &agentv1.RootPasswordResult{RequestId: cmd.GetSetRootPassword().GetRequestId()}
+			if err != nil {
+				res.Error = err.Error()
+			}
+			return emit(&agentv1.Event{Payload: &agentv1.Event_RootPasswordResult{RootPasswordResult: res}})
+		})
 	case *agentv1.Command_ConvertPrepare, *agentv1.Command_ConvertCommit, *agentv1.Command_ConvertRollback:
 		r.convert(ctx, cmd, emit)
 	case *agentv1.Command_Uninstall:
@@ -176,6 +188,11 @@ func (r *Router) Handle(ctx context.Context, cmd *agentv1.Command, emit executor
 		r.log.Warn("unhandled command", "id", cmd.GetId())
 		_ = emit(failure("", fmt.Errorf("unhandled command type")))
 	}
+}
+
+// rootPasswordExecutor is optional so test executors need not implement it.
+type rootPasswordExecutor interface {
+	SetRootPassword(ctx context.Context, cmd *agentv1.SetRootPassword) error
 }
 
 // convertExecutor is optional so test executors need not implement it.

@@ -1546,17 +1546,39 @@ fi`
 	_ = ref.cmd(ctx, "sh", "-c", script).Run()
 }
 
-// applyRootPassword pipes the password to chpasswd to keep it off argv. Best-effort:
-// without chpasswd only console access is lost.
+// applyRootPassword is best-effort on deploy: without chpasswd only console access is lost.
 func (o *ProxmoxLXC) applyRootPassword(ctx context.Context, ref guestRef, password string, logLine LogFunc) {
-	if password == "" || strings.ContainsAny(password, ":\n") {
+	if password == "" {
 		return
+	}
+	if err := setGuestRootPassword(ctx, ref, password); err != nil {
+		logLine(agentv1.LogStream_LOG_STREAM_SYSTEM_WARN, "could not set the LXC root password: "+err.Error())
+	}
+}
+
+type rootPasswordSetter interface {
+	SetRootPassword(ctx context.Context, workloadID, password string) error
+}
+
+func (o *ProxmoxLXC) SetRootPassword(ctx context.Context, workloadID, password string) error {
+	ref, ok := o.guestFor(workloadID)
+	if !ok {
+		return fmt.Errorf("no LXC or VM for workload %s", workloadID)
+	}
+	return setGuestRootPassword(ctx, ref, password)
+}
+
+// setGuestRootPassword pipes the password to chpasswd to keep it off argv.
+func setGuestRootPassword(ctx context.Context, ref guestRef, password string) error {
+	if password == "" || strings.ContainsAny(password, ":\n") {
+		return errors.New("refusing an empty password or one chpasswd can't take")
 	}
 	cmd := ref.cmd(ctx, "chpasswd")
 	cmd.Stdin = strings.NewReader("root:" + password + "\n")
 	if out, err := cmd.CombinedOutput(); err != nil {
-		logLine(agentv1.LogStream_LOG_STREAM_SYSTEM_WARN, "could not set the LXC root password: "+strings.TrimSpace(string(out)))
+		return fmt.Errorf("chpasswd: %s", strings.TrimSpace(string(out)))
 	}
+	return nil
 }
 
 func (o *ProxmoxLXC) writeEnvFile(ctx context.Context, ref guestRef, path, content string) error {
