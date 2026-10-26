@@ -40,7 +40,7 @@ func TestReport(t *testing.T) {
 	write(t, sys, "class/hwmon/hwmon1/temp1_input", "41500\n")
 
 	c := &Collector{Sys: sys, Run: fakeRun(map[string]string{
-		"smartctl --scan -j": `{"devices":[{"name":"/dev/sda","type":"sat"},{"name":"/dev/nvme0","type":"nvme"},{"name":"/dev/sdz","type":"scsi"}]}`,
+		"smartctl --scan-open -j": `{"devices":[{"name":"/dev/sda","type":"sat"},{"name":"/dev/nvme0","type":"nvme"},{"name":"/dev/sdz","type":"scsi"}]}`,
 		"smartctl -j -H -A -i -d sat /dev/sda": `{"model_name":"WDC RED","smart_status":{"passed":false},"temperature":{"current":38},
 			"power_on_time":{"hours":41000},"ata_smart_attributes":{"table":[{"id":5,"raw":{"value":12}},{"id":9,"raw":{"value":41000}}]}}`,
 		"smartctl -j -H -A -i -d nvme /dev/nvme0": `{"model_name":"Samsung 980","smart_status":{"passed":true},"temperature":{"current":41},
@@ -69,6 +69,17 @@ func TestReport(t *testing.T) {
 	// No RAPL here, so power falls back to the UPS: 23% of 900 W.
 	if r.PowerWatts < 206.9 || r.PowerWatts > 207.1 {
 		t.Fatalf("power = %v", r.PowerWatts)
+	}
+}
+
+func TestDiskFallsBackToAutodetectedType(t *testing.T) {
+	c := &Collector{Sys: t.TempDir(), Run: fakeRun(map[string]string{
+		"smartctl --scan-open -j":               `{"devices":[{"name":"/dev/sda","type":"scsi"}]}`,
+		"smartctl -j -H -A -i -d scsi /dev/sda": `{"model_name":"ST4000"}`,
+		"smartctl -j -H -A -i /dev/sda":         `{"model_name":"ST4000","smart_status":{"passed":true}}`,
+	})}
+	if d := c.Report(context.Background(), "host").Disks; len(d) != 1 || !d[0].SmartPassed {
+		t.Fatalf("disks = %v", d)
 	}
 }
 

@@ -91,7 +91,8 @@ type smartInfo struct {
 }
 
 func (c *Collector) disks(ctx context.Context) []*agentv1.DiskHealth {
-	out, err := c.Run(ctx, "smartctl", "--scan", "-j")
+	// --scan names SATA disks "scsi", which hides their SMART; --scan-open probes for "sat".
+	out, err := c.Run(ctx, "smartctl", "--scan-open", "-j")
 	if err != nil {
 		return nil
 	}
@@ -101,16 +102,11 @@ func (c *Collector) disks(ctx context.Context) []*agentv1.DiskHealth {
 	}
 	var disks []*agentv1.DiskHealth
 	for _, d := range scan.Devices {
-		args := []string{"-j", "-H", "-A", "-i"}
-		if d.Type != "" {
-			args = append(args, "-d", d.Type)
+		info, ok := c.smart(ctx, d.Name, d.Type)
+		if !ok && d.Type != "" {
+			info, ok = c.smart(ctx, d.Name, "") // let smartctl pick the type itself
 		}
-		raw, err := c.Run(ctx, "smartctl", append(args, d.Name)...)
-		if err != nil {
-			continue
-		}
-		var info smartInfo
-		if json.Unmarshal(raw, &info) != nil || info.SmartStatus == nil {
+		if !ok {
 			continue // no SMART support, e.g. a virtual disk
 		}
 		disk := &agentv1.DiskHealth{
@@ -131,6 +127,19 @@ func (c *Collector) disks(ctx context.Context) []*agentv1.DiskHealth {
 		disks = append(disks, disk)
 	}
 	return disks
+}
+
+func (c *Collector) smart(ctx context.Context, device, typ string) (smartInfo, bool) {
+	args := []string{"-j", "-H", "-A", "-i"}
+	if typ != "" {
+		args = append(args, "-d", typ)
+	}
+	var info smartInfo
+	raw, err := c.Run(ctx, "smartctl", append(args, device)...)
+	if err != nil || json.Unmarshal(raw, &info) != nil || info.SmartStatus == nil {
+		return info, false
+	}
+	return info, true
 }
 
 // temperatures reads every hwmon sensor (millidegrees in temp*_input).
