@@ -56,7 +56,8 @@ func TestVMCapabilityNamesWhatIsMissing(t *testing.T) {
 		want   string
 	}{
 		{"capable", func(*ProxmoxLXC) {}, ""},
-		{"arm", func(*ProxmoxLXC) { vmHostArch = "arm64" }, "x86_64"},
+		{"arm64 is capable", func(*ProxmoxLXC) { vmHostArch = "arm64" }, ""},
+		{"other arch", func(*ProxmoxLXC) { vmHostArch = "riscv64" }, "x86_64 or arm64"},
 		{"old pve", func(*ProxmoxLXC) {
 			pveVersionOutput = func(context.Context) ([]byte, error) { return []byte("pve-manager/7.4.3/x"), nil }
 		}, "Proxmox VE 8.0 or newer; this host runs 7.4.3"},
@@ -128,8 +129,8 @@ func TestRunRefusesWhatAVMCannotDoBeforeTouchingProxmox(t *testing.T) {
 	t.Run("host not capable", func(t *testing.T) {
 		o := vmProxmox(t)
 		vmCapableHost(t, o)
-		vmHostArch = "arm64"
-		if _, err := o.Run(context.Background(), vmSpec(nil)); err == nil || !strings.Contains(err.Error(), "x86_64") {
+		vmHostArch = "riscv64"
+		if _, err := o.Run(context.Background(), vmSpec(nil)); err == nil || !strings.Contains(err.Error(), "x86_64 or arm64") {
 			t.Fatalf("err = %v", err)
 		}
 	})

@@ -1006,9 +1006,11 @@ type VmImageSource struct {
 	// Detached signature of the checksum file; empty when the file is clearsigned or unsigned.
 	SignatureUrl string `protobuf:"bytes,3,opt,name=signature_url,json=signatureUrl,proto3" json:"signature_url,omitempty"`
 	// Armored OpenPGP public key(s); when set, the checksum file must carry a valid signature.
-	SigningKey    string `protobuf:"bytes,4,opt,name=signing_key,json=signingKey,proto3" json:"signing_key,omitempty"`
-	Label         string `protobuf:"bytes,5,opt,name=label,proto3" json:"label,omitempty"`
-	Family        string `protobuf:"bytes,6,opt,name=family,proto3" json:"family,omitempty"`
+	SigningKey string `protobuf:"bytes,4,opt,name=signing_key,json=signingKey,proto3" json:"signing_key,omitempty"`
+	Label      string `protobuf:"bytes,5,opt,name=label,proto3" json:"label,omitempty"`
+	Family     string `protobuf:"bytes,6,opt,name=family,proto3" json:"family,omitempty"`
+	// What the image was built for; the agent refuses one that is not its host's.
+	Arch          string `protobuf:"bytes,7,opt,name=arch,proto3" json:"arch,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1081,6 +1083,13 @@ func (x *VmImageSource) GetLabel() string {
 func (x *VmImageSource) GetFamily() string {
 	if x != nil {
 		return x.Family
+	}
+	return ""
+}
+
+func (x *VmImageSource) GetArch() string {
+	if x != nil {
+		return x.Arch
 	}
 	return ""
 }
@@ -7537,12 +7546,14 @@ func (x *Gpu) GetHint() string {
 }
 
 type NodeInfo struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Name          string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
-	MemTotal      uint64                 `protobuf:"varint,2,opt,name=mem_total,json=memTotal,proto3" json:"mem_total,omitempty"`
-	MemFree       uint64                 `protobuf:"varint,3,opt,name=mem_free,json=memFree,proto3" json:"mem_free,omitempty"`
-	DiskFree      uint64                 `protobuf:"varint,4,opt,name=disk_free,json=diskFree,proto3" json:"disk_free,omitempty"`
-	Load          float64                `protobuf:"fixed64,5,opt,name=load,proto3" json:"load,omitempty"`
+	state    protoimpl.MessageState `protogen:"open.v1"`
+	Name     string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
+	MemTotal uint64                 `protobuf:"varint,2,opt,name=mem_total,json=memTotal,proto3" json:"mem_total,omitempty"`
+	MemFree  uint64                 `protobuf:"varint,3,opt,name=mem_free,json=memFree,proto3" json:"mem_free,omitempty"`
+	DiskFree uint64                 `protobuf:"varint,4,opt,name=disk_free,json=diskFree,proto3" json:"disk_free,omitempty"`
+	Load     float64                `protobuf:"fixed64,5,opt,name=load,proto3" json:"load,omitempty"`
+	// The node's CPU architecture ("amd64" or "arm64"); empty when the agent could not tell.
+	Arch          string `protobuf:"bytes,6,opt,name=arch,proto3" json:"arch,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -7610,6 +7621,13 @@ func (x *NodeInfo) GetLoad() float64 {
 		return x.Load
 	}
 	return 0
+}
+
+func (x *NodeInfo) GetArch() string {
+	if x != nil {
+		return x.Arch
+	}
+	return ""
 }
 
 type Lifecycle struct {
@@ -8706,7 +8724,7 @@ const file_ownship_agent_v1_agent_proto_rawDesc = "" +
 	"\x0efetch_vm_image\x18& \x01(\v2\x1e.ownship.agent.v1.FetchVmImageH\x00R\ffetchVmImage\x12I\n" +
 	"\x0fremove_vm_image\x18' \x01(\v2\x1f.ownship.agent.v1.RemoveVmImageH\x00R\rremoveVmImage\x12O\n" +
 	"\x11set_root_password\x18( \x01(\v2!.ownship.agent.v1.SetRootPasswordH\x00R\x0fsetRootPasswordB\t\n" +
-	"\apayloadJ\x04\b\v\x10\fJ\x04\b\f\x10\rJ\x04\b\x0e\x10\x0f\"\xb8\x01\n" +
+	"\apayloadJ\x04\b\v\x10\fJ\x04\b\f\x10\rJ\x04\b\x0e\x10\x0f\"\xcc\x01\n" +
 	"\rVmImageSource\x12\x10\n" +
 	"\x03url\x18\x01 \x01(\tR\x03url\x12!\n" +
 	"\fchecksum_url\x18\x02 \x01(\tR\vchecksumUrl\x12#\n" +
@@ -8714,7 +8732,8 @@ const file_ownship_agent_v1_agent_proto_rawDesc = "" +
 	"\vsigning_key\x18\x04 \x01(\tR\n" +
 	"signingKey\x12\x14\n" +
 	"\x05label\x18\x05 \x01(\tR\x05label\x12\x16\n" +
-	"\x06family\x18\x06 \x01(\tR\x06family\"P\n" +
+	"\x06family\x18\x06 \x01(\tR\x06family\x12\x12\n" +
+	"\x04arch\x18\a \x01(\tR\x04arch\"P\n" +
 	"\x10RhelSubscription\x12\x15\n" +
 	"\x06org_id\x18\x01 \x01(\tR\x05orgId\x12%\n" +
 	"\x0eactivation_key\x18\x02 \x01(\tR\ractivationKey\"\xba\x01\n" +
@@ -9280,13 +9299,14 @@ const file_ownship_agent_v1_agent_proto_rawDesc = "" +
 	"\x04name\x18\x02 \x01(\tR\x04name\x12\x12\n" +
 	"\x04node\x18\x03 \x01(\tR\x04node\x12\x16\n" +
 	"\x06usable\x18\x04 \x01(\bR\x06usable\x12\x12\n" +
-	"\x04hint\x18\x05 \x01(\tR\x04hint\"\x87\x01\n" +
+	"\x04hint\x18\x05 \x01(\tR\x04hint\"\x9b\x01\n" +
 	"\bNodeInfo\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\x1b\n" +
 	"\tmem_total\x18\x02 \x01(\x04R\bmemTotal\x12\x19\n" +
 	"\bmem_free\x18\x03 \x01(\x04R\amemFree\x12\x1b\n" +
 	"\tdisk_free\x18\x04 \x01(\x04R\bdiskFree\x12\x12\n" +
-	"\x04load\x18\x05 \x01(\x01R\x04load\"w\n" +
+	"\x04load\x18\x05 \x01(\x01R\x04load\x12\x12\n" +
+	"\x04arch\x18\x06 \x01(\tR\x04arch\"w\n" +
 	"\tLifecycle\x12#\n" +
 	"\rdeployment_id\x18\x01 \x01(\tR\fdeploymentId\x12-\n" +
 	"\x05phase\x18\x02 \x01(\x0e2\x17.ownship.agent.v1.PhaseR\x05phase\x12\x16\n" +

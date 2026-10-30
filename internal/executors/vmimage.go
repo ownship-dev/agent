@@ -181,6 +181,9 @@ func inspectVMImage(ctx context.Context, dir, name, id string) vmImageFile {
 	if err := checkSidecarSum(path, sum); err != nil {
 		return fail(err.Error())
 	}
+	if why := foreignArch(vmHostArch, name, img.Info.GetLabel()); why != "" {
+		return fail(why)
+	}
 	img.Info.Usable = true
 	return img
 }
@@ -339,17 +342,7 @@ func (o *ProxmoxLXC) ensureVMBase(ctx context.Context, img vmImageFile, logLine 
 		return "", err
 	}
 	logLine(agentv1.LogStream_LOG_STREAM_SYSTEM, "importing VM image "+id+" as template "+vmid+" (first use)")
-	out, err := qmOutput(ctx, "create", vmid,
-		"--name", "ownship-base-"+strings.ReplaceAll(id, "_", "-"),
-		"--tags", ownshipBaseTag,
-		"--ostype", "l26",
-		"--cores", "1",
-		"--memory", "1024",
-		"--net0", "virtio,bridge="+o.cfg.Bridge,
-		"--agent", "enabled=1",
-		"--serial0", "socket",
-		"--vga", "serial0",
-		"--scsihw", "virtio-scsi-single")
+	out, err := qmOutput(ctx, append([]string{"create", vmid}, vmBaseCreateArgs(id, o.cfg.Bridge, o.cfg.Storage, vmHostArch)...)...)
 	o.vmidMu.Unlock() // vmid is claimed once qm create ran
 	if err != nil {
 		return "", qmErr("create VM template", out, err)
@@ -370,7 +363,7 @@ func (o *ProxmoxLXC) ensureVMBase(ctx context.Context, img vmImageFile, logLine 
 	if out, err := qmOutput(ctx, "set", vmid,
 		"--scsi0", volid+",discard=on",
 		"--boot", "order=scsi0",
-		"--ide2", o.cfg.Storage+":cloudinit"); err != nil {
+		vmCloudInitSlot(vmHostArch), o.cfg.Storage+":cloudinit"); err != nil {
 		return fail(qmErr("attach VM template disk", out, err))
 	}
 	if out, err := qmOutput(ctx, "template", vmid); err != nil {

@@ -175,8 +175,14 @@ func (o *ProxmoxLXC) resolveBaseOS(ctx context.Context, id, targetNode string, l
 		node = o.localNodeName(ctx)
 	}
 
+	// A template for the other architecture would create an LXC that can't start.
+	arch := o.archOfNode(ctx, node)
+	if arch == "" && node == o.localNodeName(ctx) {
+		arch = vmHostArch
+	}
 	storages, sdiags := o.vztmplStoragesOn(ctx, node)
 	volids, tdiags := o.templatesOn(ctx, node)
+	volids = forArch(volids, arch)
 	for _, d := range append(sdiags, tdiags...) {
 		logLine(agentv1.LogStream_LOG_STREAM_SYSTEM, d)
 	}
@@ -219,7 +225,7 @@ func (o *ProxmoxLXC) resolveBaseOS(ctx context.Context, id, targetNode string, l
 			"pveam available failed on %s: %s — the appliance index is unreadable; run 'pveam update' on the node and retry (storages scanned: %v)",
 			node, execErrDetail(err), storages)
 	}
-	name := newestMatching(parsePveamAvailable(string(out)), spec.Prefix)
+	name := newestMatching(forArch(parsePveamAvailable(string(out)), arch), spec.Prefix)
 	if name == "" {
 		return "", fmt.Errorf(
 			"no downloadable template matching %q in the pveam index — run 'pveam update' on %s and check its appliance index; storages scanned: %v; templates present: %s",
@@ -233,6 +239,17 @@ func (o *ProxmoxLXC) resolveBaseOS(ctx context.Context, id, targetNode string, l
 
 	// Safe: storage comes from pvesh and name is anchored to the compiled-in catalogue.
 	return storage + ":vztmpl/" + name, nil
+}
+
+// forArch drops the names built for another architecture; names that say none stay.
+func forArch(names []string, arch string) []string {
+	out := names[:0:0]
+	for _, n := range names {
+		if foreignArch(arch, n) == "" {
+			out = append(out, n)
+		}
+	}
+	return out
 }
 
 func templateFilenames(volids []string) []string {

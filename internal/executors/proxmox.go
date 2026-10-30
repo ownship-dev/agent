@@ -50,6 +50,8 @@ type ProxmoxLXC struct {
 	nodesMu    sync.Mutex
 	nodesCache []*agentv1.NodeInfo
 	nodesAt    time.Time
+	// A node's architecture never changes, so it is asked once per node.
+	nodeArch map[string]string
 
 	// The node name is stable while the agent runs, so it is resolved once.
 	nodeNameMu sync.Mutex
@@ -860,6 +862,7 @@ func (o *ProxmoxLXC) Nodes(ctx context.Context) []*agentv1.NodeInfo {
 			MemFree:  n.MaxMem - n.Mem,
 			DiskFree: n.MaxDisk - n.Disk,
 			Load:     n.CPU,
+			Arch:     o.archOfNode(ctx, n.Node),
 		})
 	}
 
@@ -868,6 +871,43 @@ func (o *ProxmoxLXC) Nodes(ctx context.Context) []*agentv1.NodeInfo {
 	o.nodesAt = time.Now()
 	o.nodesMu.Unlock()
 	return nodes
+}
+
+// archOfNode reads the node's kernel machine (x86_64, aarch64); "" when it can't be read, so
+// an offline node is asked again next time.
+func (o *ProxmoxLXC) archOfNode(ctx context.Context, node string) string {
+	o.nodesMu.Lock()
+	known := o.nodeArch[node]
+	o.nodesMu.Unlock()
+	if known != "" || !reNode.MatchString(node) {
+		return known
+	}
+	out, err := nodeStatus(ctx, node)
+	if err != nil {
+		return ""
+	}
+	var st struct {
+		Kernel struct {
+			Machine string `json:"machine"`
+		} `json:"current-kernel"`
+	}
+	if json.Unmarshal(out, &st) != nil {
+		return ""
+	}
+	arch := normalizeArch(st.Kernel.Machine)
+	if arch != "" {
+		o.nodesMu.Lock()
+		if o.nodeArch == nil {
+			o.nodeArch = map[string]string{}
+		}
+		o.nodeArch[node] = arch
+		o.nodesMu.Unlock()
+	}
+	return arch
+}
+
+var nodeStatus = func(ctx context.Context, node string) ([]byte, error) {
+	return exec.CommandContext(ctx, "pvesh", "get", "/nodes/"+node+"/status", "--output-format", "json").Output()
 }
 
 // Templates lists the vztmpl volids visible on this node, in the form pct create takes.
@@ -1261,7 +1301,7 @@ func (o *ProxmoxLXC) createLXC(ctx context.Context, workloadID, baseTemplate, te
 			for _, d := range diags {
 				logLine(agentv1.LogStream_LOG_STREAM_SYSTEM, d)
 			}
-			baseTemplate, err = rankFallback(volids)
+			baseTemplate, err = rankFallback(forArch(volids, vmHostArch))
 			if err == nil {
 				logLine(agentv1.LogStream_LOG_STREAM_SYSTEM, "no base OS specified, auto-picked template "+baseTemplate)
 			}
@@ -1270,6 +1310,11 @@ func (o *ProxmoxLXC) createLXC(ctx context.Context, workloadID, baseTemplate, te
 			o.vmidMu.Unlock()
 			return guestRef{}, err
 		}
+	}
+	// pct create runs on this node, so the template must be built for its architecture.
+	if why := foreignArch(vmHostArch, baseTemplate); why != "" {
+		o.vmidMu.Unlock()
+		return guestRef{}, fmt.Errorf("template %s is %s; pick one for this host's architecture", baseTemplate, why)
 	}
 	req.Cores = "1"
 	if v := res.GetVcpu(); v > 0 {

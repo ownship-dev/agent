@@ -274,6 +274,13 @@ func (o *ProxmoxLXC) fetchCatalog(ctx context.Context, dir, id string, src *agen
 	if name == "" || name == "/" || name == "." {
 		return vmImageFile{}, fmt.Errorf("VM image %s: the URL names no file", id)
 	}
+	// Caught before a multi-gigabyte download that could never boot here.
+	if a := normalizeArch(src.GetArch()); a != "" && a != vmHostArch {
+		return vmImageFile{}, fmt.Errorf("VM image %s is built for %s; this host is %s", id, archLabel(a), archLabel(vmHostArch))
+	}
+	if why := foreignArch(vmHostArch, name); why != "" {
+		return vmImageFile{}, fmt.Errorf("VM image %s is %s", id, why)
+	}
 	logLine(agentv1.LogStream_LOG_STREAM_SYSTEM, "checking "+name+" against "+u.Hostname()+"'s checksum file")
 	sums, err := fetchSmall(ctx, src.GetChecksumUrl(), 1<<20)
 	if err != nil {
@@ -431,6 +438,9 @@ func (o *ProxmoxLXC) FetchLinkImage(ctx context.Context, cmd *agentv1.FetchVmIma
 	u, err := vmfetch.CheckURL(cmd.GetUrl(), vmfetch.Open)
 	if err != nil {
 		return fail(err)
+	}
+	if why := foreignArch(vmHostArch, path.Base(u.Path), cmd.GetLabel(), id); why != "" {
+		return fail(fmt.Errorf("this image is %s", why))
 	}
 	if exists, err := o.imageExists(ctx, id); err != nil || exists {
 		if err == nil {

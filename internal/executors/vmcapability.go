@@ -54,8 +54,8 @@ func (o *ProxmoxLXC) VMReport(ctx context.Context) VMReport {
 
 // vmHostBlockedReason checks the host alone; images only matter when a VM is created.
 func (o *ProxmoxLXC) vmHostBlockedReason(ctx context.Context) string {
-	if vmHostArch != "amd64" {
-		return "VMs need an x86_64 host."
+	if vmHostArch != "amd64" && vmHostArch != "arm64" {
+		return "VMs need an x86_64 or arm64 host."
 	}
 	v := o.PveVersion(ctx)
 	if _, major, _, ok := parsePveVersion("pve-manager/" + v); !ok || major < minVMMajor {
